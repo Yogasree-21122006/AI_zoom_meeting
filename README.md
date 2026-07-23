@@ -60,18 +60,6 @@ Visit `http://localhost:5173` to view it locally.
 
 ---
 
-## 📂 Project Structure
-
-src/
-├── components/ # UI components (MeetingGrid, LiveCaptions, ControlBar, etc.)
-├── hooks/ # useNetworkDetection - real-time bandwidth detection
-├── pages/ # LandingPage, MeetingRoom, PostMeetingSummary
-├── store/ # Zustand store (useMeetingStore)
-└── types/ # TypeScript interfaces
-
-
----
-
 ## 🎯 Use Case
 
 Designed for **rural colleges, schools, and remote work scenarios** where consistent high-speed internet cannot be guaranteed — ensuring learning and communication continue without interruption, regardless of network conditions.
