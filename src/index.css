@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+/* Custom Scrollbar for Transcript & Chat Elements */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.3);
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.4);
+}
+
+/* Audio Wave Animation Keyframes */
+@keyframes audioWave {
+  0%, 100% {
+    height: 4px;
+  }
+  50% {
+    height: 28px;
+  }
+}
+
+.animate-wave-1 {
+  animation: audioWave 1s ease-in-out infinite;
+}
+
+.animate-wave-2 {
+  animation: audioWave 0.7s ease-in-out infinite;
+  animation-delay: 0.15s;
+}
+
+.animate-wave-3 {
+  animation: audioWave 1.2s ease-in-out infinite;
+  animation-delay: 0.3s;
+}
+
+.animate-wave-4 {
+  animation: audioWave 0.8s ease-in-out infinite;
+  animation-delay: 0.45s;
+}
+
+.animate-wave-5 {
+  animation: audioWave 1.1s ease-in-out infinite;
+  animation-delay: 0.25s;
+}
+
+/* Glassmorphism Styles */
+.glass-panel {
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-card {
+  background: rgba(30, 41, 59, 0.4);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Static Noise Grid for simulated Video Loss or Camera Off */
+.video-noise {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.15) 1px, transparent 0),
+                    radial-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 0);
+  background-size: 8px 8px;
+  background-position: 0 0, 4px 4px;
+}
+
+/* PDF Print styles */
+@media print {
+  body {
+    background: white;
+    color: black;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-card {
+    border: 1px solid #e2e8f0;
+    box-shadow: none !important;
+    background: white !important;
+    color: black !important;
+  }
+}
