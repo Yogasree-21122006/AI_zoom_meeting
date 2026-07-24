@@ -8,22 +8,54 @@ interface NetworkMetrics {
 }
 
 export const useNetworkDetection = (initialTier: BandwidthTier = 'high'): NetworkMetrics => {
-  const [currentTier, setCurrentTier] = useState<BandwidthTier>(initialTier);
-  const [downlinkSpeed, setDownlinkSpeed] = useState<number>(3.5); // Default speed
-  const [effectiveType, setEffectiveType] = useState<string>('4g'); // Default type
+  const [currentTier, setCurrentTier] = useState<BandwidthTier>(() => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return 'low';
+    }
+    return initialTier;
+  });
+  const [downlinkSpeed, setDownlinkSpeed] = useState<number>(() => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return 0;
+    }
+    return 3.5; // Default speed
+  });
+  const [effectiveType, setEffectiveType] = useState<string>(() => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return 'none';
+    }
+    return '4g'; // Default type
+  });
 
   // Majority vote buffer for hysteresis (stores the last 3 measurements)
-  const bufferRef = useRef<BandwidthTier[]>([initialTier, initialTier, initialTier]);
+  const bufferRef = useRef<BandwidthTier[]>(
+    typeof navigator !== 'undefined' && navigator.onLine === false
+      ? ['low', 'low', 'low']
+      : [initialTier, initialTier, initialTier]
+  );
+
+  // A ref to store the latest performMeasurement function so online/offline event handlers can access it
+  const performMeasurementRef = useRef<() => Promise<void>>(undefined);
 
   // Run the fetch-based speed test
   const runSpeedTest = async (): Promise<number> => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, 4000); // 4 second timeout wrapper
+
     try {
       const startTime = performance.now();
       // Fetch the speedtest file with cache: no-store to avoid cached responses
-      const response = await fetch(`/speedtest.bin?t=${Date.now()}`, { cache: 'no-store' });
+      const response = await fetch(`/speedtest.bin?t=${Date.now()}`, { 
+        cache: 'no-store',
+        signal: controller.signal
+      });
+      
       if (!response.ok) throw new Error('Speed test download failed');
       
       await response.blob();
+      clearTimeout(timeoutId);
       const endTime = performance.now();
 
       const durationSeconds = (endTime - startTime) / 1000;
@@ -36,6 +68,7 @@ export const useNetworkDetection = (initialTier: BandwidthTier = 'high'): Networ
 
       return parseFloat(speedMbps.toFixed(2));
     } catch (error) {
+      clearTimeout(timeoutId);
       console.warn('Network speed test error:', error);
       return 0.1; // Fallback to low speed if offline/error
     }
@@ -43,6 +76,10 @@ export const useNetworkDetection = (initialTier: BandwidthTier = 'high'): Networ
 
   // Process a new reading and update the majority buffer
   const processNewReading = (tier: BandwidthTier, speed: number, type: string) => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return; // Bypass completely if offline
+    }
+
     setDownlinkSpeed(speed);
     setEffectiveType(type);
 
@@ -75,10 +112,48 @@ export const useNetworkDetection = (initialTier: BandwidthTier = 'high'): Networ
     }
   };
 
+  // Immediate offline/online event listeners
+  useEffect(() => {
+    const handleOffline = () => {
+      setCurrentTier('low');
+      bufferRef.current = ['low', 'low', 'low'];
+      setDownlinkSpeed(0);
+      setEffectiveType('none');
+    };
+
+    const handleOnline = () => {
+      // Trigger a fresh speed test/measurement immediately
+      if (performMeasurementRef.current) {
+        performMeasurementRef.current();
+      }
+    };
+
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+
+    // Check navigator.onLine on mount - if false, immediately set tier to 'low'
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      handleOffline();
+    }
+
+    return () => {
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, []);
+
   useEffect(() => {
     const conn = (navigator as any).connection;
 
     const performMeasurement = async () => {
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        setCurrentTier('low');
+        bufferRef.current = ['low', 'low', 'low'];
+        setDownlinkSpeed(0);
+        setEffectiveType('none');
+        return;
+      }
+
       let speedMbps = 1.5;
       let connType = 'unknown';
       let mappedTier: BandwidthTier = 'high';
@@ -103,7 +178,11 @@ export const useNetworkDetection = (initialTier: BandwidthTier = 'high'): Networ
         }
       } else {
         // Fall back fully to measured speed test for unsupported browsers (Safari/Firefox)
-        speedMbps = await runSpeedTest();
+        try {
+          speedMbps = await runSpeedTest();
+        } catch (error) {
+          speedMbps = 0.1;
+        }
         connType = 'speed-test';
 
         if (speedMbps > 1.5) mappedTier = 'high';
@@ -113,6 +192,9 @@ export const useNetworkDetection = (initialTier: BandwidthTier = 'high'): Networ
 
       processNewReading(mappedTier, speedMbps, connType);
     };
+
+    // Store performMeasurement in ref
+    performMeasurementRef.current = performMeasurement;
 
     // Initial measurement
     performMeasurement();
@@ -137,4 +219,5 @@ export const useNetworkDetection = (initialTier: BandwidthTier = 'high'): Networ
 
   return { currentTier, downlinkSpeed, effectiveType };
 };
+
 export default useNetworkDetection;

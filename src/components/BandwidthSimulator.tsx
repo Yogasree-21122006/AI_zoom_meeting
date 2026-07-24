@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useMeetingStore } from '../store/useMeetingStore';
 import type { BandwidthTier } from '../types';
-import { Wifi, SignalHigh, SignalMedium, SignalLow, Activity, ChevronDown, ChevronUp, Cpu, Server } from 'lucide-react';
+import { Wifi, WifiOff, SignalHigh, SignalMedium, SignalLow, Activity, ChevronDown, ChevronUp, Cpu, Server } from 'lucide-react';
 
 interface BandwidthSimulatorProps {
   downlinkSpeed: number;
@@ -16,6 +16,24 @@ export const BandwidthSimulator: React.FC<BandwidthSimulatorProps> = ({ downlink
   } = useMeetingStore();
 
   const [isOpen, setIsOpen] = useState(true);
+  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    if (typeof navigator !== 'undefined') {
+      setIsOnline(navigator.onLine);
+    }
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   const getTierColor = (tier: BandwidthTier) => {
     switch (tier) {
@@ -45,8 +63,12 @@ export const BandwidthSimulator: React.FC<BandwidthSimulatorProps> = ({ downlink
           <span className="font-semibold text-slate-200">Network Connection</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className={`px-2 py-0.5 text-xs font-semibold rounded-full border ${getTierColor(bandwidthTier)}`}>
-            {bandwidthTier.toUpperCase()}
+          <span className={`px-2 py-0.5 text-xs font-semibold rounded-full border ${
+            !isOnline 
+              ? 'text-rose-500 border-rose-500/30 bg-rose-500/20' 
+              : getTierColor(bandwidthTier)
+          }`}>
+            {!isOnline ? 'OFFLINE' : bandwidthTier.toUpperCase()}
           </span>
           {isOpen ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
         </div>
@@ -58,12 +80,20 @@ export const BandwidthSimulator: React.FC<BandwidthSimulatorProps> = ({ downlink
           {/* Read-Only Status Indicator */}
           <div className="flex items-center gap-3 p-3 bg-white/5 border border-white/5 rounded-xl">
             <div className="flex-shrink-0">
-              {getSignalIcon(bandwidthTier, "w-8 h-8")}
+              {!isOnline ? (
+                <WifiOff className="w-8 h-8 text-rose-500" />
+              ) : (
+                getSignalIcon(bandwidthTier, "w-8 h-8")
+              )}
             </div>
             <div>
-              <h4 className="text-xs font-semibold text-slate-300">Automatic Detection</h4>
+              <h4 className={`text-xs font-semibold ${!isOnline ? 'text-rose-500' : 'text-slate-300'}`}>
+                {!isOnline ? 'No Connection' : 'Automatic Detection'}
+              </h4>
               <p className="text-[10px] text-slate-400 leading-normal">
-                Classroom streams are adjusted in real-time based on active speed.
+                {!isOnline 
+                  ? 'Your device is offline. Please check your internet settings.'
+                  : 'Classroom streams are adjusted in real-time based on active speed.'}
               </p>
             </div>
           </div>
@@ -74,29 +104,38 @@ export const BandwidthSimulator: React.FC<BandwidthSimulatorProps> = ({ downlink
               <span className="text-slate-400 flex items-center gap-1.5">
                 <Wifi className="w-3.5 h-3.5" /> Measured Speed:
               </span>
-              <span className="font-mono font-semibold text-slate-200">{downlinkSpeed} Mbps</span>
+              <span className="font-mono font-semibold text-slate-200">
+                {!isOnline ? '0' : downlinkSpeed} Mbps
+              </span>
             </div>
 
             <div className="flex justify-between items-center text-xs">
               <span className="text-slate-400 flex items-center gap-1.5">
                 <Wifi className="w-3.5 h-3.5" /> Connection Type:
               </span>
-              <span className="font-mono font-semibold text-slate-200 uppercase">{effectiveType}</span>
+              <span className="font-mono font-semibold text-slate-200 uppercase">
+                {!isOnline ? 'none' : effectiveType}
+              </span>
             </div>
             
             <div className="flex justify-between items-center text-xs">
               <span className="text-slate-400 flex items-center gap-1.5">
                 <Cpu className="w-3.5 h-3.5" /> Latency (RTT):
               </span>
-              <span className="font-mono font-semibold text-slate-200">{simulatedLatency} ms</span>
+              <span className="font-mono font-semibold text-slate-200">
+                {!isOnline ? '∞' : `${simulatedLatency} ms`}
+              </span>
             </div>
 
             <div className="flex justify-between items-center text-xs">
               <span className="text-slate-400 flex items-center gap-1.5">
                 <Server className="w-3.5 h-3.5" /> Packet Loss:
               </span>
-              <span className={`font-mono font-semibold ${simulatedLoss > 5 ? 'text-rose-400' : simulatedLoss > 1 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                {simulatedLoss}%
+              <span className={`font-mono font-semibold ${
+                !isOnline ? 'text-rose-500' :
+                simulatedLoss > 5 ? 'text-rose-400' : simulatedLoss > 1 ? 'text-amber-400' : 'text-emerald-400'
+              }`}>
+                {!isOnline ? '100%' : `${simulatedLoss}%`}
               </span>
             </div>
 
@@ -105,6 +144,7 @@ export const BandwidthSimulator: React.FC<BandwidthSimulatorProps> = ({ downlink
               <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
                 <div 
                   className={`h-full transition-all duration-500 ${
+                    !isOnline ? 'bg-rose-600 w-0' :
                     bandwidthTier === 'high' ? 'bg-emerald-500 w-full' : 
                     bandwidthTier === 'medium' ? 'bg-amber-500 w-1/2' : 'bg-rose-500 w-[12%]'
                   }`} 
@@ -121,4 +161,5 @@ export const BandwidthSimulator: React.FC<BandwidthSimulatorProps> = ({ downlink
     </div>
   );
 };
+
 export default BandwidthSimulator;
