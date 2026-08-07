@@ -193,7 +193,8 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
       simulatedLatency: latency,
       simulatedLoss: loss,
       ...(targetTier === 'low' ? { isCameraOn: false, isMuted: true } : {}),
-      ...(targetTier === 'medium' ? { isCameraOn: false } : {})
+      ...(targetTier === 'medium' ? { isCameraOn: false, isMuted: false } : {}),
+      ...(targetTier === 'high' ? { isCameraOn: true, isMuted: false } : {})
     });
 
     if (toastMsg) {
