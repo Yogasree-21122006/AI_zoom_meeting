@@ -239,6 +239,8 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
             case 'chat-message': {
               const { text, sender, role } = data;
               addTranscriptEntry(text, sender, role);
+              // Update local captions overlay to display what the remote peer said
+              useMeetingStore.setState({ captions: `${sender}: "${text}"` });
               break;
             }
 

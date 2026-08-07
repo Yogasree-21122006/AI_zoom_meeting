@@ -10,18 +10,6 @@ import { useNetworkDetection } from '../hooks/useNetworkDetection';
 import { useWebRTC } from '../hooks/useWebRTC';
 import { Users, Clock, Copy, Check } from 'lucide-react';
 
-const SIMULATED_DIALOGUE = [
-  { sender: 'Prof. Sarah Jenkins', text: "Welcome to today's Geography class! We will discuss the water cycle and groundwater aquifers.", role: 'teacher' },
-  { sender: 'Rohan Sharma', text: "Professor, how does rainfall replenish underground water levels in dry rural areas?", role: 'student' },
-  { sender: 'Prof. Sarah Jenkins', text: "Precipitation seeps down through soil layers in a process called percolation, Rohan.", role: 'teacher' },
-  { sender: 'Priya Patel', text: "Does soil type affect the speed of aquifer recharge?", role: 'student' },
-  { sender: 'Prof. Sarah Jenkins', text: "Absolutely, Priya! Sandy soils percolation is much faster compared to compact clay.", role: 'teacher' },
-  { sender: 'Amit Kumar', text: "Oh, so that is why clay soils lead to flash floods and surface run-offs?", role: 'student' },
-  { sender: 'Prof. Sarah Jenkins', text: "Spot on, Amit! Clay traps water on the surface, preventing it from replenishing the reservoir.", role: 'teacher' },
-  { sender: 'Rohan Sharma', text: "Should we draw the percolation diagram in our notebooks for the exam?", role: 'student' },
-  { sender: 'Prof. Sarah Jenkins', text: "Yes, focus on labeling transpiration, evaporation, and percolation rates. It will be on the quiz.", role: 'teacher' }
-];
-
 export const MeetingRoom: React.FC = () => {
   const {
     roomId,
@@ -35,6 +23,7 @@ export const MeetingRoom: React.FC = () => {
     setCaptions,
     incrementDuration,
     bandwidthTier,
+    isMuted,
     simulatedLatency,
     setTierFromDetection,
     addToast,
@@ -51,8 +40,6 @@ export const MeetingRoom: React.FC = () => {
   useEffect(() => {
     setTierFromDetection(currentTier);
   }, [currentTier, setTierFromDetection]);
-
-  const dialogueIndexRef = useRef(0);
 
   // Format meeting duration: HH:MM:SS
   const formatTime = (seconds: number) => {
@@ -75,38 +62,101 @@ export const MeetingRoom: React.FC = () => {
     return () => clearInterval(clockInterval);
   }, [incrementDuration]);
 
-  // Dialogue simulation loop (used to power live transcripts & captions demo)
+  const speakingTimeoutRef = useRef<any>(null);
+
+  // Real-time Speech Recognition for live captions and transcripts
+  const shouldListen = !isMuted && bandwidthTier !== 'low';
+  const shouldListenRef = useRef(shouldListen);
+  shouldListenRef.current = shouldListen;
+
   useEffect(() => {
-    const dialogTimer = setInterval(() => {
-      const item = SIMULATED_DIALOGUE[dialogueIndexRef.current];
-      
-      setCaptions(`${item.sender}: "${item.text}"`);
-      addTranscriptEntry(item.text, item.sender, item.role as 'teacher' | 'student');
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      console.warn("Speech Recognition API not supported in this browser.");
+      return;
+    }
 
-      // Set that participant as speaking in state
-      setParticipants(
-        participants.map((p) => {
-          const isCurrentSpeaker = p.name.includes(item.sender) || (item.sender.includes('Sarah') && p.role === 'teacher');
-          return {
-            ...p,
-            isSpeaking: isCurrentSpeaker
-          };
-        })
-      );
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
 
-      // Stop speaking 4 seconds later (before next message starts)
-      setTimeout(() => {
+    recognition.onresult = (event: any) => {
+      let interimTranscript = '';
+      let finalTranscript = '';
+
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript;
+        } else {
+          interimTranscript += event.results[i][0].transcript;
+        }
+      }
+
+      const activeText = finalTranscript || interimTranscript;
+      if (activeText.trim()) {
+        // Set local captions overlay text
+        setCaptions(`${userName} (You): "${activeText}"`);
+
+        // Set local user as speaking to animate waveform
         setParticipants(
-          participants.map((p) => ({ ...p, isSpeaking: false }))
+          participants.map((p) => 
+            p.id === 'local-user' ? { ...p, isSpeaking: true } : p
+          )
         );
-      }, 4000);
 
-      // Rotate dialogue index
-      dialogueIndexRef.current = (dialogueIndexRef.current + 1) % SIMULATED_DIALOGUE.length;
-    }, 7000);
+        if (speakingTimeoutRef.current) {
+          clearTimeout(speakingTimeoutRef.current);
+        }
+        speakingTimeoutRef.current = setTimeout(() => {
+          setParticipants(
+            participants.map((p) => 
+              p.id === 'local-user' ? { ...p, isSpeaking: false } : p
+            )
+          );
+        }, 3000);
 
-    return () => clearInterval(dialogTimer);
-  }, [participants, setParticipants, addTranscriptEntry, setCaptions]);
+        // If it's a final sentence, add to transcript list and broadcast to other peers
+        if (finalTranscript.trim()) {
+          addTranscriptEntry(finalTranscript.trim(), `${userName} (You)`, userRole);
+          if (useMeetingStore.getState().sendChatMessageFn) {
+            useMeetingStore.getState().sendChatMessageFn!(finalTranscript.trim());
+          }
+        }
+      }
+    };
+
+    recognition.onend = () => {
+      // Auto restart if mic is still active
+      if (shouldListenRef.current) {
+        try {
+          recognition.start();
+        } catch (err) {
+          console.warn("Failed to restart speech recognition", err);
+        }
+      }
+    };
+
+    if (shouldListen) {
+      try {
+        recognition.start();
+      } catch (err) {
+        console.error("SpeechRecognition start error:", err);
+      }
+    }
+
+    return () => {
+      shouldListenRef.current = false;
+      try {
+        recognition.stop();
+      } catch (err) {
+        // ignore
+      }
+      if (speakingTimeoutRef.current) {
+        clearTimeout(speakingTimeoutRef.current);
+      }
+    };
+  }, [shouldListen, userName, userRole, setCaptions, addTranscriptEntry, participants, setParticipants]);
 
   const handleCopyLink = () => {
     const origin = window.location.origin;
