@@ -1,0 +1,14 @@
+{
+  "name": "ai-zoom-meeting-signaling-server",
+  "version": "1.0.0",
+  "description": "WebRTC signaling server for AI Zoom Meeting",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.17.0"
+  }
+}

@@ -18,14 +18,14 @@ export const ControlBar: React.FC = () => {
   const isMicDisabled = bandwidthTier === 'low';
 
   return (
-    <div className="flex items-center justify-between px-6 py-4 bg-slate-900/80 border border-white/10 rounded-2xl backdrop-blur-lg shadow-2xl max-w-4xl mx-auto w-full no-print">
+    <div className="flex items-center justify-between px-6 py-4 bg-white/80 border border-purple-200 rounded-2xl backdrop-blur-lg shadow-lg max-w-4xl mx-auto w-full no-print">
       {/* Active Mode Label */}
       <div className="flex items-center gap-2">
         <Wifi className={`w-4 h-4 ${
-          bandwidthTier === 'high' ? 'text-emerald-400' : 
-          bandwidthTier === 'medium' ? 'text-amber-400' : 'text-rose-400'
+          bandwidthTier === 'high' ? 'text-emerald-600' : 
+          bandwidthTier === 'medium' ? 'text-amber-600' : 'text-rose-600'
         }`} />
-        <span className="text-xs text-slate-300 font-medium hidden sm:inline">
+        <span className="text-xs text-slate-600 font-bold hidden sm:inline">
           {bandwidthTier === 'high' && 'High Bandwidth Mode (Video)'}
           {bandwidthTier === 'medium' && 'Medium Bandwidth Mode (Audio-Only)'}
           {bandwidthTier === 'low' && 'Low Bandwidth Mode (Captions-Only)'}
@@ -41,17 +41,17 @@ export const ControlBar: React.FC = () => {
             disabled={isMicDisabled}
             className={`p-3.5 rounded-xl border transition-all duration-300 flex items-center justify-center ${
               isMicDisabled
-                ? 'bg-slate-950/40 border-rose-500/20 text-rose-500/50 cursor-not-allowed'
+                ? 'bg-slate-50 border-rose-200 text-rose-300 cursor-not-allowed'
                 : isMuted
-                ? 'bg-rose-500/20 border-rose-500/40 text-rose-400 hover:bg-rose-500/30'
-                : 'bg-slate-800/60 border-slate-700 text-slate-100 hover:bg-slate-700'
+                ? 'bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100'
+                : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
             }`}
             title={isMicDisabled ? "Mic disabled in Low Bandwidth mode" : isMuted ? "Unmute Microphone" : "Mute Microphone"}
           >
             {isMuted || isMicDisabled ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
           </button>
           {isMicDisabled && (
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-slate-950 text-rose-400 text-[10px] py-1 px-2 rounded-md shadow-lg border border-rose-500/20 whitespace-nowrap">
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-slate-800 text-rose-400 text-[10px] py-1 px-2 rounded-md shadow-lg border border-rose-500/20 whitespace-nowrap z-50">
               Blocked in low bandwidth
             </div>
           )}
@@ -64,17 +64,17 @@ export const ControlBar: React.FC = () => {
             disabled={isCameraDisabled}
             className={`p-3.5 rounded-xl border transition-all duration-300 flex items-center justify-center ${
               isCameraDisabled
-                ? 'bg-slate-950/40 border-rose-500/20 text-rose-500/50 cursor-not-allowed'
+                ? 'bg-slate-50 border-rose-200 text-rose-300 cursor-not-allowed'
                 : !isCameraOn
-                ? 'bg-rose-500/20 border-rose-500/40 text-rose-400 hover:bg-rose-500/30'
-                : 'bg-slate-800/60 border-slate-700 text-slate-100 hover:bg-slate-700'
+                ? 'bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100'
+                : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
             }`}
             title={isCameraDisabled ? "Camera disabled to save bandwidth" : isCameraOn ? "Turn Camera Off" : "Turn Camera On"}
           >
             {!isCameraOn || isCameraDisabled ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
           </button>
           {isCameraDisabled && (
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-slate-950 text-rose-400 text-[10px] py-1 px-2 rounded-md shadow-lg border border-rose-500/20 whitespace-nowrap">
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-slate-800 text-rose-400 text-[10px] py-1 px-2 rounded-md shadow-lg border border-rose-500/20 whitespace-nowrap z-50">
               {bandwidthTier === 'medium' ? 'Disabled in audio mode' : 'Disabled in captions mode'}
             </div>
           )}
@@ -83,7 +83,7 @@ export const ControlBar: React.FC = () => {
         {/* End / Leave Meeting */}
         <button
           onClick={leaveMeeting}
-          className="px-5 py-3.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-medium flex items-center gap-2 transition-colors border border-rose-500/40 hover:shadow-[0_0_15px_rgba(239,68,68,0.3)]"
+          className="px-5 py-3.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold flex items-center gap-2 transition-colors border border-rose-500/40 hover:shadow-[0_0_15px_rgba(220,38,38,0.25)]"
           title="Leave Class"
         >
           <LogOut className="w-5 h-5" />
@@ -97,15 +97,17 @@ export const ControlBar: React.FC = () => {
           onClick={toggleTranscript}
           className={`px-4 py-3 rounded-xl border flex items-center gap-2 transition-all duration-300 ${
             isTranscriptOpen
-              ? 'bg-indigo-600 border-indigo-500 text-white shadow-[0_0_15px_rgba(99,102,241,0.3)]'
-              : 'bg-slate-800/60 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white'
+              ? 'bg-blue-600 border-blue-500 text-white shadow-[0_0_15px_rgba(37,99,235,0.25)]'
+              : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200 hover:text-slate-800'
           }`}
           title="Toggle Transcript Panel"
         >
           <FileText className="w-5 h-5" />
-          <span className="hidden md:inline text-sm font-medium">Notes & Transcript</span>
+          <span className="hidden md:inline text-sm font-bold">Notes & Transcript</span>
         </button>
       </div>
     </div>
   );
 };
+
+export default ControlBar;

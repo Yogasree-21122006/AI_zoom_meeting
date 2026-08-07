@@ -42,21 +42,40 @@ In rural areas, students and professionals often face poor internet connectivity
 
 ## 🚀 Getting Started
 
+### 1. Set Up the Signaling Server (WebRTC Calls)
+
 ```bash
-# Clone the repository
-git clone https://github.com/Yogasree-21122006/AI_zoom_meeting.git
+# Navigate to the signaling server directory
+cd server
 
-# Navigate into the project
-cd AI_zoom_meeting
-
-# Install dependencies
+# Install server dependencies
 npm install
+
+# Start the signaling server
+npm start
+```
+The server will start on `http://localhost:3001` (WebSocket server bound to `ws://localhost:3001`).
+
+### 2. Set Up the Frontend Client
+
+```bash
+# Navigate to the root directory
+cd ..
+
+# Install frontend dependencies
+npm install
+
+# Create environment configuration
+# A .env file is automatically set up for local development:
+# VITE_SIGNALING_SERVER_URL=ws://localhost:3001
 
 # Run the development server
 npm run dev
 ```
 
-Visit `http://localhost:5173` to view it locally.
+Visit `http://localhost:5173` to test the application. Open the app in two different browser windows to test real-time WebRTC calling.
+- **Join/Host room:** Generate a room, click Host, copy invitation, open the invite link in another window.
+- **Predictive Mode:** Toggle Beta mode in the Network Connection card to see predictive pre-emption switching based on simulated geographical patterns (Ooty, Kodaikanal, Coimbatore City) and live weather forecast integrations.
 
 ---
 

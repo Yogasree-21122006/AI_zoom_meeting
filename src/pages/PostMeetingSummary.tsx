@@ -82,10 +82,10 @@ export const PostMeetingSummary: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 py-12 px-4 sm:px-6 relative">
+    <div className="min-h-screen bg-gradient-to-tr from-purple-100 via-indigo-50 to-purple-200 text-slate-800 py-12 px-4 sm:px-6 relative">
       {/* Background gradients */}
-      <div className="absolute top-[-10%] left-[5%] w-[40%] aspect-square rounded-full bg-indigo-500/5 blur-3xl" />
-      <div className="absolute bottom-[-5%] right-[5%] w-[45%] aspect-square rounded-full bg-emerald-500/5 blur-3xl" />
+      <div className="absolute top-[-10%] left-[5%] w-[40%] aspect-square rounded-full bg-purple-300/20 blur-3xl" />
+      <div className="absolute bottom-[-5%] right-[5%] w-[45%] aspect-square rounded-full bg-blue-200/10 blur-3xl" />
 
       <div className="max-w-4xl mx-auto space-y-8 relative z-10">
         
@@ -93,7 +93,7 @@ export const PostMeetingSummary: React.FC = () => {
         <div className="flex items-center justify-between no-print">
           <button 
             onClick={() => setMeetingStatus('landing')}
-            className="flex items-center gap-2 text-xs font-semibold text-slate-400 hover:text-white transition-colors bg-white/5 border border-white/5 py-2 px-3.5 rounded-xl hover:bg-white/10"
+            className="flex items-center gap-2 text-xs font-bold text-slate-600 hover:text-slate-900 transition-colors bg-white border border-purple-200 py-2 px-3.5 rounded-xl hover:bg-slate-50 shadow-sm"
           >
             <ArrowLeft className="w-4 h-4" /> Back to Landing Page
           </button>
@@ -101,13 +101,13 @@ export const PostMeetingSummary: React.FC = () => {
           <div className="flex items-center gap-2">
             <button 
               onClick={handleDownloadText}
-              className="flex items-center gap-2 text-xs font-semibold text-slate-300 hover:text-white transition-colors border border-white/5 bg-slate-900/60 hover:bg-slate-800 py-2 px-4 rounded-xl"
+              className="flex items-center gap-2 text-xs font-bold text-slate-750 hover:text-slate-900 transition-colors border border-purple-200 bg-white hover:bg-slate-50 py-2 px-4 rounded-xl shadow-sm"
             >
-              <Download className="w-4 h-4 text-slate-400" /> Save Notes (TXT)
+              <Download className="w-4 h-4 text-slate-500" /> Save Notes (TXT)
             </button>
             <button 
               onClick={handlePrintPDF}
-              className="flex items-center gap-2 text-xs font-semibold text-white transition-colors border border-indigo-500/30 bg-indigo-600 hover:bg-indigo-700 py-2 px-4 rounded-xl shadow-lg hover:shadow-indigo-500/10"
+              className="flex items-center gap-2 text-xs font-bold text-white transition-colors border border-blue-500 bg-blue-600 hover:bg-blue-700 py-2 px-4 rounded-xl shadow-md hover:shadow-blue-500/10"
             >
               <Printer className="w-4 h-4" /> Download PDF Summary
             </button>
@@ -122,61 +122,61 @@ export const PostMeetingSummary: React.FC = () => {
         </div>
 
         {/* Main report layout */}
-        <div className="glass-panel rounded-3xl p-6 sm:p-8 space-y-8 shadow-2xl print-card border border-white/10">
+        <div className="glass-panel rounded-3xl p-6 sm:p-8 space-y-8 shadow-xl print-card border border-purple-200">
           
           {/* Metadata banner */}
-          <div className="grid grid-cols-3 gap-4 border-b border-white/10 pb-6 print:border-slate-300">
+          <div className="grid grid-cols-3 gap-4 border-b border-purple-100 pb-6 print:border-slate-300">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 print:text-black">
+              <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-600 print:text-black">
                 <BookOpen className="w-5 h-5" />
               </div>
               <div>
-                <span className="block text-[10px] text-slate-400 uppercase tracking-wider">Class Title</span>
-                <span className="font-bold text-slate-200 text-sm truncate block max-w-[150px] sm:max-w-none print:text-black">{aiSummary.title}</span>
+                <span className="block text-[10px] text-slate-500 font-bold uppercase tracking-wider">Class Title</span>
+                <span className="font-extrabold text-slate-800 text-sm truncate block max-w-[150px] sm:max-w-none print:text-black">{aiSummary.title}</span>
               </div>
             </div>
 
             <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 print:text-black">
+              <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-600 print:text-black">
                 <Clock className="w-5 h-5" />
               </div>
               <div>
-                <span className="block text-[10px] text-slate-400 uppercase tracking-wider">Duration</span>
-                <span className="font-bold text-slate-200 text-sm print:text-black">{formatDuration(meetingDuration)}</span>
+                <span className="block text-[10px] text-slate-500 font-bold uppercase tracking-wider">Duration</span>
+                <span className="font-extrabold text-slate-800 text-sm print:text-black">{formatDuration(meetingDuration)}</span>
               </div>
             </div>
 
             <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 print:text-black">
+              <div className="p-2.5 rounded-xl bg-purple-50 border border-purple-200 text-purple-600 print:text-black">
                 <Users className="w-5 h-5" />
               </div>
               <div>
-                <span className="block text-[10px] text-slate-400 uppercase tracking-wider">Attendees</span>
-                <span className="font-bold text-slate-200 text-sm print:text-black">{participants.length} Active</span>
+                <span className="block text-[10px] text-slate-500 font-bold uppercase tracking-wider">Attendees</span>
+                <span className="font-extrabold text-slate-800 text-sm print:text-black">{participants.length} Active</span>
               </div>
             </div>
           </div>
 
           {/* AI generated takeaways block */}
           <div className="space-y-3">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-indigo-400 flex items-center gap-2 print:text-black">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-blue-600 flex items-center gap-2 print:text-black">
               <Lightbulb className="w-4 h-4" /> Key Discussion Points
             </h3>
-            <ul className="space-y-2.5 pl-5 list-disc text-sm text-slate-300 print:text-black leading-relaxed">
+            <ul className="space-y-2.5 pl-5 list-disc text-sm text-slate-600 print:text-black leading-relaxed">
               {aiSummary.keyTakeaways.map((point, index) => (
-                <li key={index}>{point}</li>
+                <li key={index} className="marker:text-blue-500">{point}</li>
               ))}
             </ul>
           </div>
 
           {/* Decisions */}
           <div className="space-y-3">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-2 print:text-black">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-emerald-600 flex items-center gap-2 print:text-black">
               <FileSpreadsheet className="w-4 h-4" /> Decisions Made
             </h3>
-            <ul className="space-y-2.5 pl-5 list-disc text-sm text-slate-300 print:text-black leading-relaxed">
+            <ul className="space-y-2.5 pl-5 list-disc text-sm text-slate-600 print:text-black leading-relaxed">
               {aiSummary.decisions.map((decision, index) => (
-                <li key={index} className="marker:text-emerald-400 print:marker:text-black">
+                <li key={index} className="marker:text-emerald-500 print:marker:text-black">
                   {decision}
                 </li>
               ))}
@@ -185,16 +185,16 @@ export const PostMeetingSummary: React.FC = () => {
 
           {/* Action Items */}
           <div className="space-y-4">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-purple-400 flex items-center gap-2 print:text-black">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-purple-600 flex items-center gap-2 print:text-black">
               <CheckSquare className="w-4 h-4" /> Action Items
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {aiSummary.actionItems.map((action, index) => (
-                <div key={index} className="p-4 rounded-xl bg-slate-950/40 border border-white/5 print:border-slate-300 print:bg-white flex flex-col gap-1 justify-between">
-                  <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider print:text-slate-600">
+                <div key={index} className="p-4 rounded-xl bg-white border border-purple-100 print:border-slate-300 print:bg-white flex flex-col gap-1 justify-between shadow-sm">
+                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider print:text-slate-600">
                     Assignee: {action.assignee}
                   </span>
-                  <p className="text-sm text-slate-200 font-medium print:text-black mt-1 leading-normal">
+                  <p className="text-sm text-slate-700 font-bold print:text-black mt-1 leading-normal">
                     {action.task}
                   </p>
                 </div>
@@ -204,7 +204,7 @@ export const PostMeetingSummary: React.FC = () => {
 
           {/* Participant attendance list */}
           <div className="space-y-3">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2 print:text-black">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2 print:text-black">
               <Users className="w-4 h-4" /> Roster Attendance Log
             </h3>
             <div className="flex flex-wrap gap-2.5 pt-1">
@@ -213,8 +213,8 @@ export const PostMeetingSummary: React.FC = () => {
                   key={p.id} 
                   className={`px-3 py-1 rounded-full text-xs font-semibold border ${
                     p.role === 'teacher' 
-                      ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-300 print:text-black print:border-slate-300' 
-                      : 'bg-slate-800/60 border-slate-700/50 text-slate-300 print:text-black print:border-slate-300'
+                      ? 'bg-blue-50 border-blue-200 text-blue-700 print:text-black print:border-slate-300' 
+                      : 'bg-slate-100 border-slate-200 text-slate-600 print:text-black print:border-slate-300'
                   }`}
                 >
                   {p.name} ({p.role})
@@ -225,19 +225,19 @@ export const PostMeetingSummary: React.FC = () => {
         </div>
 
         {/* Expandable Transcript Accordion (Hidden on printing unless expanded) */}
-        <div className="glass-panel rounded-3xl p-6 shadow-xl border border-white/10 print:border-slate-300 print:bg-white text-slate-200 print:text-black overflow-hidden">
+        <div className="glass-panel rounded-3xl p-6 shadow-xl border border-purple-200 text-slate-800 print:border-slate-300 print:bg-white overflow-hidden">
           <button 
             onClick={() => setIsTranscriptExpanded(!isTranscriptExpanded)}
             className="w-full flex items-center justify-between text-left focus:outline-none no-print"
           >
             <div className="flex items-center gap-2">
-              <FileText className="w-5 h-5 text-indigo-400" />
+              <FileText className="w-5 h-5 text-blue-600" />
               <div>
-                <h3 className="font-bold text-sm">Full Class Dialogue Transcript ({transcript.length} logs)</h3>
-                <p className="text-[10px] text-slate-400">Expand to view exact transcript history</p>
+                <h3 className="font-bold text-sm text-slate-800">Full Class Dialogue Transcript ({transcript.length} logs)</h3>
+                <p className="text-[10px] text-slate-500">Expand to view exact transcript history</p>
               </div>
             </div>
-            {isTranscriptExpanded ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+            {isTranscriptExpanded ? <ChevronUp className="w-5 h-5 text-slate-500" /> : <ChevronDown className="w-5 h-5 text-slate-500" />}
           </button>
 
           {/* Print Header for Transcript (always visible when printed if expanded) */}
@@ -246,7 +246,7 @@ export const PostMeetingSummary: React.FC = () => {
           </div>
 
           {(isTranscriptExpanded || window.matchMedia('print').matches) && (
-            <div className={`mt-6 space-y-4 max-h-96 overflow-y-auto pr-2 pt-2 border-t border-white/10 print:border-slate-200 print:max-h-none ${!isTranscriptExpanded ? 'print:block hidden' : 'block'}`}>
+            <div className={`mt-6 space-y-4 max-h-96 overflow-y-auto pr-2 pt-2 border-t border-purple-100 print:border-slate-200 print:max-h-none ${!isTranscriptExpanded ? 'print:block hidden' : 'block'}`}>
               {transcript.map((entry) => {
                 const isTeacher = entry.role === 'teacher' || entry.sender.toLowerCase().includes('prof');
                 if (entry.sender === 'System') return null;
@@ -254,12 +254,12 @@ export const PostMeetingSummary: React.FC = () => {
                 return (
                   <div key={entry.id} className="text-xs leading-normal">
                     <div className="flex justify-between items-center text-[10px] text-slate-400 print:text-slate-600 mb-1">
-                      <span className={`font-semibold ${isTeacher ? 'text-indigo-400 print:text-indigo-800' : 'text-slate-200 print:text-slate-900'}`}>
+                      <span className={`font-semibold ${isTeacher ? 'text-blue-600 print:text-blue-800 font-bold' : 'text-slate-700 print:text-slate-900'}`}>
                         {entry.sender} ({isTeacher ? 'Teacher' : 'Student'})
                       </span>
                       <span className="font-mono">{entry.timestamp}</span>
                     </div>
-                    <p className="bg-slate-950/40 p-2.5 rounded-lg border border-white/5 text-slate-300 print:bg-white print:border-slate-200 print:text-black italic">
+                    <p className="bg-white p-2.5 rounded-lg border border-slate-200/80 text-slate-600 print:bg-white print:border-slate-200 print:text-black italic shadow-sm">
                       "{entry.text}"
                     </p>
                   </div>
@@ -273,3 +273,5 @@ export const PostMeetingSummary: React.FC = () => {
     </div>
   );
 };
+
+export default PostMeetingSummary;

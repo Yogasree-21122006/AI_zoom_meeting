@@ -4,14 +4,20 @@ import type { BandwidthTier, Participant, TranscriptEntry } from '../types';
 interface Toast {
   id: string;
   text: string;
-  type: 'info' | 'warning' | 'error';
+  type: 'info' | 'warning' | 'error' | 'predictive';
 }
 
 interface MeetingState {
   // Network connection settings
   bandwidthTier: BandwidthTier;
+  realDetectedTier: BandwidthTier;
   simulatedLatency: number; // in ms
   simulatedLoss: number; // in %
+  
+  // Predictive network settings
+  predictedTier: BandwidthTier | null;
+  predictionConfidence: number;
+  predictiveModeEnabled: boolean;
   
   // Meeting details
   status: 'landing' | 'active' | 'ended';
@@ -35,8 +41,14 @@ interface MeetingState {
   // Custom Toast system
   toasts: Toast[];
 
+  // Send chat message callback
+  sendChatMessageFn: ((text: string) => void) | null;
+
   // Actions
   setTierFromDetection: (tier: BandwidthTier) => void;
+  setPrediction: (tier: BandwidthTier | null, confidence: number) => void;
+  setPredictiveModeEnabled: (enabled: boolean) => void;
+  recalculateAppliedTier: () => void;
   setMeetingStatus: (status: 'landing' | 'active' | 'ended') => void;
   joinMeeting: (userName: string, roomId: string, role: 'teacher' | 'student', startTier: BandwidthTier) => void;
   leaveMeeting: () => void;
@@ -48,7 +60,7 @@ interface MeetingState {
   setParticipants: (participants: Participant[]) => void;
   toggleParticipantMute: (id: string) => void;
   toggleParticipantCamera: (id: string) => void;
-  addToast: (text: string, type: 'info' | 'warning' | 'error') => void;
+  addToast: (text: string, type: 'info' | 'warning' | 'error' | 'predictive') => void;
   removeToast: (id: string) => void;
   incrementDuration: () => void;
 }
@@ -62,8 +74,12 @@ const MOCK_PARTICIPANTS: Participant[] = [
 
 export const useMeetingStore = create<MeetingState>((set, get) => ({
   bandwidthTier: 'high',
+  realDetectedTier: 'high',
   simulatedLatency: 24,
   simulatedLoss: 0.1,
+  predictedTier: null,
+  predictionConfidence: 1.0,
+  predictiveModeEnabled: true,
   status: 'landing',
   roomId: '',
   userName: '',
@@ -76,47 +92,101 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
   transcript: [],
   participants: [],
   toasts: [],
+  sendChatMessageFn: null,
 
   setTierFromDetection: (tier) => {
-    const currentTier = get().bandwidthTier;
-    if (currentTier === tier) return;
+    const currentReal = get().realDetectedTier;
+    if (currentReal === tier) return;
 
-    let latency = 24;
-    let loss = 0.1;
+    set({ realDetectedTier: tier });
+    get().recalculateAppliedTier();
+  },
+
+  setPrediction: (tier, confidence) => {
+    const currentPredicted = get().predictedTier;
+    if (currentPredicted === tier && get().predictionConfidence === confidence) return;
+
+    set({ predictedTier: tier, predictionConfidence: confidence });
+
+    if (get().predictiveModeEnabled) {
+      get().recalculateAppliedTier();
+    }
+  },
+
+  setPredictiveModeEnabled: (enabled) => {
+    set({ predictiveModeEnabled: enabled });
+    get().recalculateAppliedTier();
+  },
+
+  recalculateAppliedTier: () => {
+    const realTier = get().realDetectedTier;
+    const predTier = get().predictedTier;
+    const enabled = get().predictiveModeEnabled;
+
+    let targetTier = realTier;
+    if (enabled && predTier) {
+      const ranks = { low: 1, medium: 2, high: 3 };
+      if (ranks[predTier] < ranks[realTier]) {
+        targetTier = predTier;
+      }
+    }
+
+    const currentApplied = get().bandwidthTier;
+    if (currentApplied === targetTier) return;
+
+    let latency = get().simulatedLatency;
+    let loss = get().simulatedLoss;
     let toastMsg = '';
-    let toastType: 'info' | 'warning' | 'error' = 'info';
+    let toastType: 'info' | 'warning' | 'error' | 'predictive' = 'info';
 
-    switch (tier) {
-      case 'high':
-        latency = 24 + Math.floor(Math.random() * 15);
-        loss = 0.1;
-        toastMsg = 'Network connection restored. Re-enabling video and audio streams.';
-        toastType = 'info';
-        break;
-      case 'medium':
-        latency = 120 + Math.floor(Math.random() * 50);
-        loss = 1.8;
-        toastMsg = 'Network slowed down. Switched to Audio-only mode to preserve bandwidth.';
-        toastType = 'warning';
-        break;
-      case 'low':
-        latency = 450 + Math.floor(Math.random() * 150);
-        loss = 9.5;
-        toastMsg = 'Network critical. Audio & Video disabled. Caption-only mode activated.';
-        toastType = 'error';
-        break;
+    const isPredictiveSwitch = targetTier === predTier && targetTier !== realTier;
+
+    if (isPredictiveSwitch) {
+      toastType = 'predictive';
+      if (targetTier === 'medium') {
+        toastMsg = 'Predictive Alert: Network likely to drop in this area around this time — pre-switching to Audio mode as a precaution';
+      } else if (targetTier === 'low') {
+        toastMsg = 'Predictive Alert: Network likely to drop in this area around this time — pre-switching to Caption mode as a precaution';
+      }
+    } else {
+      switch (targetTier) {
+        case 'high':
+          toastMsg = 'Network connection restored. Re-enabling video and audio streams.';
+          toastType = 'info';
+          break;
+        case 'medium':
+          toastMsg = 'Network slowed down. Switched to Audio-only mode to preserve bandwidth.';
+          toastType = 'warning';
+          break;
+        case 'low':
+          toastMsg = 'Network critical. Audio & Video disabled. Caption-only mode activated.';
+          toastType = 'error';
+          break;
+      }
+    }
+
+    if (targetTier === 'high') {
+      latency = 24 + Math.floor(Math.random() * 15);
+      loss = 0.1;
+    } else if (targetTier === 'medium') {
+      latency = 120 + Math.floor(Math.random() * 50);
+      loss = 1.8;
+    } else if (targetTier === 'low') {
+      latency = 450 + Math.floor(Math.random() * 150);
+      loss = 9.5;
     }
 
     set({
-      bandwidthTier: tier,
+      bandwidthTier: targetTier,
       simulatedLatency: latency,
       simulatedLoss: loss,
-      // Automatically disable local camera/mic if network gets too low, simulating app logic
-      ...(tier === 'low' ? { isCameraOn: false, isMuted: true } : {}),
-      ...(tier === 'medium' ? { isCameraOn: false } : {})
+      ...(targetTier === 'low' ? { isCameraOn: false, isMuted: true } : {}),
+      ...(targetTier === 'medium' ? { isCameraOn: false } : {})
     });
 
-    get().addToast(toastMsg, toastType);
+    if (toastMsg) {
+      get().addToast(toastMsg, toastType);
+    }
   },
 
   setMeetingStatus: (status) => set({ status }),
@@ -148,6 +218,7 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
       userRole: role,
       status: 'active',
       bandwidthTier: startTier,
+      realDetectedTier: startTier,
       simulatedLatency: latency,
       simulatedLoss: loss,
       isCameraOn: startTier === 'high',
