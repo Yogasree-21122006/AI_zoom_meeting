@@ -70,7 +70,8 @@ export const useNetworkDetection = (initialTier: BandwidthTier = 'high'): Networ
     } catch (error) {
       clearTimeout(timeoutId);
       console.warn('Network speed test error:', error);
-      return 0.1; // Fallback to low speed if offline/error
+      // Fallback to high speed if online, else low speed if completely offline
+      return (typeof navigator !== 'undefined' && navigator.onLine) ? 15.0 : 0.1;
     }
   };
 

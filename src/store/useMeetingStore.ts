@@ -19,6 +19,10 @@ interface MeetingState {
   predictionConfidence: number;
   predictiveModeEnabled: boolean;
   
+  // Manual override network settings
+  isAutoNetworkMode: boolean;
+  manualTier: BandwidthTier;
+  
   // Meeting details
   status: 'landing' | 'active' | 'ended';
   roomId: string;
@@ -49,6 +53,8 @@ interface MeetingState {
   setPrediction: (tier: BandwidthTier | null, confidence: number) => void;
   setPredictiveModeEnabled: (enabled: boolean) => void;
   recalculateAppliedTier: () => void;
+  setIsAutoNetworkMode: (auto: boolean) => void;
+  setManualTier: (tier: BandwidthTier) => void;
   setMeetingStatus: (status: 'landing' | 'active' | 'ended') => void;
   joinMeeting: (userName: string, roomId: string, role: 'teacher' | 'student', startTier: BandwidthTier) => void;
   leaveMeeting: () => void;
@@ -80,6 +86,8 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
   predictedTier: null,
   predictionConfidence: 1.0,
   predictiveModeEnabled: true,
+  isAutoNetworkMode: true,
+  manualTier: 'high',
   status: 'landing',
   roomId: '',
   userName: '',
@@ -119,12 +127,16 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
   },
 
   recalculateAppliedTier: () => {
+    const isAuto = get().isAutoNetworkMode;
+    const manualTier = get().manualTier;
     const realTier = get().realDetectedTier;
     const predTier = get().predictedTier;
     const enabled = get().predictiveModeEnabled;
 
     let targetTier = realTier;
-    if (enabled && predTier) {
+    if (!isAuto) {
+      targetTier = manualTier;
+    } else if (enabled && predTier) {
       const ranks = { low: 1, medium: 2, high: 3 };
       if (ranks[predTier] < ranks[realTier]) {
         targetTier = predTier;
@@ -187,6 +199,16 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
     if (toastMsg) {
       get().addToast(toastMsg, toastType);
     }
+  },
+
+  setIsAutoNetworkMode: (auto) => {
+    set({ isAutoNetworkMode: auto });
+    get().recalculateAppliedTier();
+  },
+
+  setManualTier: (tier) => {
+    set({ manualTier: tier });
+    get().recalculateAppliedTier();
   },
 
   setMeetingStatus: (status) => set({ status }),

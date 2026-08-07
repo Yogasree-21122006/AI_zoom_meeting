@@ -30,7 +30,11 @@ export const BandwidthSimulator: React.FC<BandwidthSimulatorProps> = ({ downlink
     simulatedLoss,
     predictiveModeEnabled,
     setPrediction,
-    setPredictiveModeEnabled
+    setPredictiveModeEnabled,
+    isAutoNetworkMode,
+    manualTier,
+    setIsAutoNetworkMode,
+    setManualTier
   } = useMeetingStore();
 
   const [isOpen, setIsOpen] = useState(true);
@@ -118,25 +122,68 @@ export const BandwidthSimulator: React.FC<BandwidthSimulatorProps> = ({ downlink
       {/* Body */}
       {isOpen && (
         <div className="p-4 space-y-4">
-          {/* Read-Only Status Indicator */}
-          <div className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-100 rounded-xl">
-            <div className="flex-shrink-0">
-              {!isOnline ? (
-                <WifiOff className="w-8 h-8 text-rose-600" />
-              ) : (
-                getSignalIcon(realDetectedTier, "w-8 h-8")
-              )}
+          {/* Connection Mode Controller */}
+          <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-700">Network Mode</span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAutoNetworkMode(true)}
+                  className={`px-2 py-0.5 text-[10px] font-bold rounded-md border transition-all ${
+                    isAutoNetworkMode 
+                      ? 'bg-blue-600 text-white border-blue-500 shadow-sm' 
+                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  Auto
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsAutoNetworkMode(false)}
+                  className={`px-2 py-0.5 text-[10px] font-bold rounded-md border transition-all ${
+                    !isAutoNetworkMode 
+                      ? 'bg-blue-600 text-white border-blue-500 shadow-sm' 
+                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  Manual
+                </button>
+              </div>
             </div>
-            <div>
-              <h4 className={`text-xs font-bold ${!isOnline ? 'text-rose-600' : 'text-slate-700'}`}>
-                {!isOnline ? 'No Connection' : 'Automatic Detection'}
-              </h4>
-              <p className="text-[10px] text-slate-500 leading-normal">
-                {!isOnline 
-                  ? 'Your device is offline. Please check your internet settings.'
-                  : 'Real-time connection metrics reactive to local network speeds.'}
-              </p>
-            </div>
+
+            {isAutoNetworkMode ? (
+              <div className="flex items-center gap-3 pt-2 border-t border-slate-200/50">
+                <div className="flex-shrink-0">
+                  {!isOnline ? (
+                    <WifiOff className="w-8 h-8 text-rose-600" />
+                  ) : (
+                    getSignalIcon(realDetectedTier, "w-8 h-8")
+                  )}
+                </div>
+                <div>
+                  <h4 className="text-[10px] font-bold text-slate-600">Automatic Detection</h4>
+                  <p className="text-[9px] text-slate-400 leading-normal">
+                    {!isOnline 
+                      ? 'Offline. Please check connection.'
+                      : 'Adjusting streams reactively based on speed.'}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between pt-2 border-t border-slate-200/50">
+                <span className="text-[10px] text-slate-500 font-bold">Manual Force Tier:</span>
+                <select
+                  value={manualTier}
+                  onChange={(e) => setManualTier(e.target.value as BandwidthTier)}
+                  className="bg-white border border-purple-100 text-slate-700 text-[10px] rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 font-bold"
+                >
+                  <option value="high">High (Video)</option>
+                  <option value="medium">Medium (Audio)</option>
+                  <option value="low">Low (Captions)</option>
+                </select>
+              </div>
+            )}
           </div>
 
           {/* Metrics dashboard */}
