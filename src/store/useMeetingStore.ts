@@ -38,6 +38,7 @@ interface MeetingState {
   // Live transcripts and captions
   captions: string;
   transcript: TranscriptEntry[];
+  transcriptLanguage: 'ta-IN' | 'en-US';
   
   // Participants
   participants: Participant[];
@@ -55,6 +56,7 @@ interface MeetingState {
   recalculateAppliedTier: () => void;
   setIsAutoNetworkMode: (auto: boolean) => void;
   setManualTier: (tier: BandwidthTier) => void;
+  setTranscriptLanguage: (lang: 'ta-IN' | 'en-US') => void;
   setMeetingStatus: (status: 'landing' | 'active' | 'ended') => void;
   joinMeeting: (userName: string, roomId: string, role: 'teacher' | 'student', startTier: BandwidthTier) => void;
   leaveMeeting: () => void;
@@ -98,6 +100,7 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
   isTranscriptOpen: false,
   captions: 'Welcome to the classroom! Please wait for the teacher to begin the lesson.',
   transcript: [],
+  transcriptLanguage: 'ta-IN',
   participants: [],
   toasts: [],
   sendChatMessageFn: null,
@@ -210,6 +213,10 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
   setManualTier: (tier) => {
     set({ manualTier: tier });
     get().recalculateAppliedTier();
+  },
+
+  setTranscriptLanguage: (lang) => {
+    set({ transcriptLanguage: lang });
   },
 
   setMeetingStatus: (status) => set({ status }),

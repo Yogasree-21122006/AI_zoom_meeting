@@ -27,6 +27,7 @@ export const MeetingRoom: React.FC = () => {
     simulatedLatency,
     setTierFromDetection,
     addToast,
+    transcriptLanguage
   } = useMeetingStore();
 
   const { currentTier, downlinkSpeed, effectiveType } = useNetworkDetection(bandwidthTier);
@@ -79,7 +80,7 @@ export const MeetingRoom: React.FC = () => {
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.lang = 'en-US';
+    recognition.lang = transcriptLanguage;
 
     recognition.onresult = (event: any) => {
       let interimTranscript = '';
@@ -156,7 +157,7 @@ export const MeetingRoom: React.FC = () => {
         clearTimeout(speakingTimeoutRef.current);
       }
     };
-  }, [shouldListen, userName, userRole, setCaptions, addTranscriptEntry, participants, setParticipants]);
+  }, [shouldListen, userName, userRole, setCaptions, addTranscriptEntry, participants, setParticipants, transcriptLanguage]);
 
   const handleCopyLink = () => {
     const origin = window.location.origin;
