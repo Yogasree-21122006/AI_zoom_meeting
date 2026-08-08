@@ -47,7 +47,7 @@ export const MeetingGrid: React.FC<MeetingGridProps> = ({ localStream, remoteStr
             // Sync local settings with store
             const pCameraOn = isLocal ? isCameraOn : participant.isCameraOn;
             const pMuted = isLocal ? isMuted : participant.isMuted;
-            const isSpeaking = isLocal ? false : participant.isSpeaking;
+            const isSpeaking = participant.isSpeaking;
             const activeStream = isLocal ? localStream : remoteStreams[participant.id];
 
             return (
@@ -133,7 +133,7 @@ export const MeetingGrid: React.FC<MeetingGridProps> = ({ localStream, remoteStr
           {participants.map((participant) => {
             const isLocal = participant.id === 'local-user';
             const pMuted = isLocal ? isMuted : participant.isMuted;
-            const isSpeaking = isLocal ? false : participant.isSpeaking;
+            const isSpeaking = participant.isSpeaking;
             const activeStream = isLocal ? localStream : remoteStreams[participant.id];
 
             return (

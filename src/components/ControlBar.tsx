@@ -14,6 +14,8 @@ export const ControlBar: React.FC = () => {
     leaveMeeting,
     transcriptLanguage,
     setTranscriptLanguage,
+    transcriptionService,
+    setTranscriptionService,
   } = useMeetingStore();
 
   const isCameraDisabled = bandwidthTier === 'medium' || bandwidthTier === 'low';
@@ -36,12 +38,24 @@ export const ControlBar: React.FC = () => {
 
       {/* Primary Actions */}
       <div className="flex items-center gap-3">
+        {/* Transcription Service Selector */}
+        <select
+          value={transcriptionService}
+          disabled={isMicDisabled}
+          onChange={(e) => setTranscriptionService(e.target.value as 'webspeech' | 'whisper')}
+          className="bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl px-2.5 py-3 hover:bg-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Transcription Engine"
+        >
+          <option value="webspeech">🎙️ Web Speech API</option>
+          <option value="whisper">✨ Whisper AI (Cloud)</option>
+        </select>
+
         {/* Language Selection */}
         <select
           value={transcriptLanguage}
           disabled={isMicDisabled}
           onChange={(e) => setTranscriptLanguage(e.target.value as 'ta-IN' | 'en-US')}
-          className="bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl px-2 py-3 hover:bg-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl px-2.5 py-3 hover:bg-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           title="Microphone Transcription Language"
         >
           <option value="ta-IN">Tamil (தமிழ்)</option>

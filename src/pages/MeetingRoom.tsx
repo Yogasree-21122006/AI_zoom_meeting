@@ -27,7 +27,9 @@ export const MeetingRoom: React.FC = () => {
     simulatedLatency,
     setTierFromDetection,
     addToast,
-    transcriptLanguage
+    transcriptLanguage,
+    transcriptionService,
+    sendAudioChunkFn
   } = useMeetingStore();
 
   const { currentTier, downlinkSpeed, effectiveType } = useNetworkDetection(bandwidthTier);
@@ -66,7 +68,7 @@ export const MeetingRoom: React.FC = () => {
   const speakingTimeoutRef = useRef<any>(null);
 
   // Real-time Speech Recognition for live captions and transcripts
-  const shouldListen = !isMuted && bandwidthTier !== 'low';
+  const shouldListen = !isMuted && bandwidthTier !== 'low' && transcriptionService === 'webspeech';
   const shouldListenRef = useRef(shouldListen);
   shouldListenRef.current = shouldListen;
 
@@ -99,9 +101,10 @@ export const MeetingRoom: React.FC = () => {
         // Set local captions overlay text
         setCaptions(`${userName} (You): "${activeText}"`);
 
-        // Set local user as speaking to animate waveform
+        // Set local user as speaking to animate waveform (read state dynamically to prevent effect reset)
+        const currentParts = useMeetingStore.getState().participants;
         setParticipants(
-          participants.map((p) => 
+          currentParts.map((p) => 
             p.id === 'local-user' ? { ...p, isSpeaking: true } : p
           )
         );
@@ -110,8 +113,9 @@ export const MeetingRoom: React.FC = () => {
           clearTimeout(speakingTimeoutRef.current);
         }
         speakingTimeoutRef.current = setTimeout(() => {
+          const checkParts = useMeetingStore.getState().participants;
           setParticipants(
-            participants.map((p) => 
+            checkParts.map((p) => 
               p.id === 'local-user' ? { ...p, isSpeaking: false } : p
             )
           );
@@ -127,14 +131,20 @@ export const MeetingRoom: React.FC = () => {
       }
     };
 
+    recognition.onerror = (event: any) => {
+      console.warn("Speech recognition warning:", event.error);
+    };
+
     recognition.onend = () => {
-      // Auto restart if mic is still active
+      // Auto restart with 400ms delay if mic is still active to prevent mic lock up
       if (shouldListenRef.current) {
-        try {
-          recognition.start();
-        } catch (err) {
-          console.warn("Failed to restart speech recognition", err);
-        }
+        setTimeout(() => {
+          try {
+            recognition.start();
+          } catch (err) {
+            console.warn("Failed to restart speech recognition", err);
+          }
+        }, 400);
       }
     };
 
@@ -157,7 +167,129 @@ export const MeetingRoom: React.FC = () => {
         clearTimeout(speakingTimeoutRef.current);
       }
     };
-  }, [shouldListen, userName, userRole, setCaptions, addTranscriptEntry, participants, setParticipants, transcriptLanguage]);
+  }, [shouldListen, userName, userRole, setCaptions, addTranscriptEntry, setParticipants, transcriptLanguage, transcriptionService]);
+
+  // Whisper AI real-time transcription recorder
+  useEffect(() => {
+    if (transcriptionService !== 'whisper' || !localStream || isMuted || bandwidthTier === 'low') {
+      return;
+    }
+
+    const audioTracks = localStream.getAudioTracks();
+    if (audioTracks.length === 0) return;
+
+    // Create a new stream with only the audio track to record
+    const audioStream = new MediaStream(audioTracks);
+    
+    let mediaRecorder: MediaRecorder | null = null;
+    let chunkInterval: any = null;
+
+    try {
+      // Preferred formats: audio/webm (highly compatible), fallback to whatever browser supports
+      const options = { mimeType: 'audio/webm' };
+      if (!MediaRecorder.isTypeSupported('audio/webm')) {
+        options.mimeType = 'audio/ogg';
+      }
+      if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+        options.mimeType = ''; // Let browser decide
+      }
+
+      mediaRecorder = new MediaRecorder(audioStream, options.mimeType ? options : undefined);
+      
+      mediaRecorder.ondataavailable = async (event) => {
+        if (event.data && event.data.size > 0) {
+          // Temporarily show waveform/speaking activity when audio data is captured
+          setParticipants(
+            useMeetingStore.getState().participants.map((p) => 
+              p.id === 'local-user' ? { ...p, isSpeaking: true } : p
+            )
+          );
+
+          if (speakingTimeoutRef.current) {
+            clearTimeout(speakingTimeoutRef.current);
+          }
+          speakingTimeoutRef.current = setTimeout(() => {
+            setParticipants(
+              useMeetingStore.getState().participants.map((p) => 
+                p.id === 'local-user' ? { ...p, isSpeaking: false } : p
+              )
+            );
+          }, 2500);
+
+          // Call Hugging Face free Whisper API directly from browser (bypasses server DNS bugs)
+          try {
+            const modelUrl = 'https://api-inference.huggingface.co/models/openai/whisper-large-v3-turbo';
+
+            const response = await fetch(modelUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': event.data.type || 'audio/webm',
+              },
+              body: event.data
+            });
+
+            const result = await response.json();
+            
+            // Check if model is loading (HF cold start)
+            if (response.status === 503 && result.error && result.error.includes('loading')) {
+              console.log(`[HF Whisper] Model is loading...`);
+              return;
+            }
+
+            if (!response.ok) {
+              throw new Error(`HF HTTP ${response.status}`);
+            }
+
+            const transcribedText = (result.text || '').trim();
+            if (transcribedText) {
+              console.log(`[HF Whisper Client] Transcribed: "${transcribedText}"`);
+              
+              // 1. Add to local transcript & captions
+              addTranscriptEntry(transcribedText, `${userName} (You)`, userRole);
+              setCaptions(`${userName} (You): "${transcribedText}"`);
+
+              // 2. Broadcast text directly to peers in room (re-uses existing chat mechanism)
+              const sendChat = useMeetingStore.getState().sendChatMessageFn;
+              if (sendChat) {
+                sendChat(transcribedText);
+              }
+            }
+          } catch (err: any) {
+            console.error('[HF Whisper Client Error]', err);
+            addToast(`Whisper API failed: ${err.message || err}. Reverting to Browser Web Speech API.`, 'error');
+            useMeetingStore.setState({ transcriptionService: 'webspeech' });
+          }
+        }
+      };
+
+      mediaRecorder.start();
+
+      // Record in 8-second slices to prevent free API rate limits and get better sentence context
+      chunkInterval = setInterval(() => {
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+          // Request data and restart recording to get clean boundaries
+          mediaRecorder.stop();
+          mediaRecorder.start();
+        }
+      }, 8000);
+
+    } catch (err) {
+      console.error('Failed to initialize MediaRecorder for Whisper:', err);
+    }
+
+    return () => {
+      if (chunkInterval) {
+        clearInterval(chunkInterval);
+      }
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        try {
+          mediaRecorder.stop();
+        } catch (e) {
+          // ignore
+        }
+      }
+    };
+  }, [transcriptionService, localStream, isMuted, bandwidthTier, sendAudioChunkFn, transcriptLanguage, setParticipants]);
 
   const handleCopyLink = () => {
     const origin = window.location.origin;

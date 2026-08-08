@@ -149,6 +149,16 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
                   role: userRole
                 }));
               }
+            },
+            sendAudioChunkFn: (base64Audio: string, mimeType: string, language: string) => {
+              if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                  type: 'audio-chunk',
+                  audio: base64Audio,
+                  mimeType,
+                  language
+                }));
+              }
             }
           });
           
@@ -170,6 +180,9 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
               // We are joining the room and need to initiate call to all existing peers
               const currentPeers: Peer[] = data.users;
               setPeers(currentPeers);
+
+              // Store our own signaling ID
+              useMeetingStore.setState({ mySignalingId: data.yourId || '' });
 
               for (const peer of currentPeers) {
                 await createPeerConnection(peer.id, ws, true);
@@ -241,6 +254,30 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
               addTranscriptEntry(text, sender, role);
               // Update local captions overlay to display what the remote peer said
               useMeetingStore.setState({ captions: `${sender}: "${text}"` });
+              break;
+            }
+
+            case 'transcription-result': {
+              const { text, sender, userId, role } = data;
+              const myId = useMeetingStore.getState().mySignalingId;
+              const isMe = userId === myId;
+              const displayName = isMe ? `${sender} (You)` : sender;
+
+              if (text.trim()) {
+                addTranscriptEntry(text.trim(), displayName, role);
+                useMeetingStore.setState({ captions: `${displayName}: "${text.trim()}"` });
+              }
+              break;
+            }
+
+            case 'transcription-error': {
+              const { error } = data;
+              console.error('[Whisper] Server transcription error:', error);
+              useMeetingStore.getState().addToast(
+                `Whisper Error: ${error}. Switching back to browser Web Speech API.`,
+                'error'
+              );
+              useMeetingStore.getState().setTranscriptionService('webspeech');
               break;
             }
 
@@ -330,7 +367,11 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
       isMounted = false;
       
       // Clear message sending function on unmount
-      useMeetingStore.setState({ sendChatMessageFn: null });
+      useMeetingStore.setState({ 
+        sendChatMessageFn: null, 
+        sendAudioChunkFn: null, 
+        mySignalingId: '' 
+      });
       
       // Stop all tracks in the local stream
       if (localStreamRef.current) {

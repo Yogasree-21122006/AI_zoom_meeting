@@ -39,6 +39,7 @@ interface MeetingState {
   captions: string;
   transcript: TranscriptEntry[];
   transcriptLanguage: 'ta-IN' | 'en-US';
+  transcriptionService: 'webspeech' | 'whisper';
   
   // Participants
   participants: Participant[];
@@ -48,6 +49,8 @@ interface MeetingState {
 
   // Send chat message callback
   sendChatMessageFn: ((text: string) => void) | null;
+  sendAudioChunkFn: ((base64Audio: string, mimeType: string, language: string) => void) | null;
+  mySignalingId: string;
 
   // Actions
   setTierFromDetection: (tier: BandwidthTier) => void;
@@ -57,6 +60,7 @@ interface MeetingState {
   setIsAutoNetworkMode: (auto: boolean) => void;
   setManualTier: (tier: BandwidthTier) => void;
   setTranscriptLanguage: (lang: 'ta-IN' | 'en-US') => void;
+  setTranscriptionService: (service: 'webspeech' | 'whisper') => void;
   setMeetingStatus: (status: 'landing' | 'active' | 'ended') => void;
   joinMeeting: (userName: string, roomId: string, role: 'teacher' | 'student', startTier: BandwidthTier) => void;
   leaveMeeting: () => void;
@@ -101,9 +105,12 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
   captions: 'Welcome to the classroom! Please wait for the teacher to begin the lesson.',
   transcript: [],
   transcriptLanguage: 'ta-IN',
+  transcriptionService: 'webspeech',
   participants: [],
   toasts: [],
   sendChatMessageFn: null,
+  sendAudioChunkFn: null,
+  mySignalingId: '',
 
   setTierFromDetection: (tier) => {
     const currentReal = get().realDetectedTier;
@@ -217,6 +224,10 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
 
   setTranscriptLanguage: (lang) => {
     set({ transcriptLanguage: lang });
+  },
+
+  setTranscriptionService: (service) => {
+    set({ transcriptionService: service });
   },
 
   setMeetingStatus: (status) => set({ status }),
