@@ -217,7 +217,23 @@ export const MeetingRoom: React.FC = () => {
             );
           }, 2500);
 
-          // Call Hugging Face free Whisper API directly from browser (bypasses server DNS bugs)
+          // 1. Try server-side OpenAI Whisper first (via WebSocket)
+          if (sendAudioChunkFn) {
+            try {
+              const reader = new FileReader();
+              reader.readAsDataURL(event.data);
+              reader.onloadend = () => {
+                const base64data = reader.result as string;
+                const base64Audio = base64data.split(',')[1];
+                sendAudioChunkFn(base64Audio, event.data.type || 'audio/webm', transcriptLanguage);
+              };
+              return; // Successfully handed off to server!
+            } catch (err) {
+              console.warn('[Whisper Client] Failed to send chunk to server, falling back to direct HF API:', err);
+            }
+          }
+
+          // 2. Fallback: Call Hugging Face free Whisper API directly from browser
           try {
             const modelUrl = 'https://api-inference.huggingface.co/models/openai/whisper-large-v3-turbo';
 
@@ -243,16 +259,23 @@ export const MeetingRoom: React.FC = () => {
 
             const transcribedText = (result.text || '').trim();
             if (transcribedText) {
-              console.log(`[HF Whisper Client] Transcribed: "${transcribedText}"`);
+              const lowerText = transcribedText.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"").trim();
+              const isHallucination = ['hello', 'thank you', 'thank you for watching', 'you', 'bye', 'please', 'oh'].includes(lowerText);
               
-              // 1. Add to local transcript & captions
-              addTranscriptEntry(transcribedText, `${userName} (You)`, userRole);
-              setCaptions(`${userName} (You): "${transcribedText}"`);
+              if (!isHallucination) {
+                console.log(`[HF Whisper Client] Transcribed: "${transcribedText}"`);
+                
+                // Add to local transcript & captions
+                addTranscriptEntry(transcribedText, `${userName} (You)`, userRole);
+                setCaptions(`${userName} (You): "${transcribedText}"`);
 
-              // 2. Broadcast text directly to peers in room (re-uses existing chat mechanism)
-              const sendChat = useMeetingStore.getState().sendChatMessageFn;
-              if (sendChat) {
-                sendChat(transcribedText);
+                // Broadcast text directly to peers in room
+                const sendChat = useMeetingStore.getState().sendChatMessageFn;
+                if (sendChat) {
+                  sendChat(transcribedText);
+                }
+              } else {
+                console.log(`[HF Whisper Client] Ignored silence hallucination: "${transcribedText}"`);
               }
             }
           } catch (err: any) {

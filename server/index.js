@@ -257,20 +257,27 @@ wss.on('connection', (ws) => {
             }
 
             if (transcribedText) {
-              console.log(`[Whisper] Transcribed for ${ws.peerName} (${ws.id}): "${transcribedText}"`);
+              const lowerText = transcribedText.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"").trim();
+              const isHallucination = ['hello', 'thank you', 'thank you for watching', 'you', 'bye', 'please', 'oh'].includes(lowerText);
               
-              // Broadcast transcription to the room
-              const room = rooms.get(ws.roomId);
-              if (room) {
-                room.forEach((peerSocket) => {
-                  peerSocket.send(JSON.stringify({
-                    type: 'transcription-result',
-                    text: transcribedText,
-                    sender: ws.peerName,
-                    userId: ws.id,
-                    role: ws.peerRole
-                  }));
-                });
+              if (!isHallucination) {
+                console.log(`[Whisper] Transcribed for ${ws.peerName} (${ws.id}): "${transcribedText}"`);
+                
+                // Broadcast transcription to the room
+                const room = rooms.get(ws.roomId);
+                if (room) {
+                  room.forEach((peerSocket) => {
+                    peerSocket.send(JSON.stringify({
+                      type: 'transcription-result',
+                      text: transcribedText,
+                      sender: ws.peerName,
+                      userId: ws.id,
+                      role: ws.peerRole
+                    }));
+                  });
+                }
+              } else {
+                console.log(`[Whisper] Ignored silence hallucination: "${transcribedText}"`);
               }
             }
           } catch (err) {
