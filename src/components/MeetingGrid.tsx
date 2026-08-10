@@ -34,12 +34,12 @@ export const MeetingGrid: React.FC<MeetingGridProps> = ({ localStream, remoteStr
   const { participants, bandwidthTier, isMuted, isCameraOn } = useMeetingStore();
 
   return (
-    <div className="w-full max-w-6xl mx-auto px-4 flex-grow flex items-center justify-center py-6 min-h-[400px]">
+    <div className="w-full max-w-6xl mx-auto px-4 flex-grow flex items-center justify-center py-2 md:py-6 min-h-[300px] md:min-h-[400px]">
       {/* High Bandwidth: Video Grid */}
       {bandwidthTier === 'high' && (
         <motion.div 
           layout 
-          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 w-full"
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 w-full"
         >
           {participants.map((participant) => {
             const isLocal = participant.id === 'local-user';
@@ -128,7 +128,7 @@ export const MeetingGrid: React.FC<MeetingGridProps> = ({ localStream, remoteStr
       {bandwidthTier === 'medium' && (
         <motion.div 
           layout 
-          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 w-full"
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-5 w-full"
         >
           {participants.map((participant) => {
             const isLocal = participant.id === 'local-user';

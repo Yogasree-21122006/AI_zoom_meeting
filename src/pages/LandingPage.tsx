@@ -71,7 +71,7 @@ export const LandingPage: React.FC = () => {
       <div className="absolute bottom-[-10%] right-[-10%] w-[50%] aspect-square rounded-full bg-blue-200/20 blur-3xl" />
 
       {/* Top Navigation */}
-      <header className="px-6 py-6 border-b border-purple-100 relative z-10 flex items-center justify-between max-w-7xl mx-auto w-full">
+      <header className="px-4 py-4 sm:px-6 sm:py-6 border-b border-purple-100 relative z-10 flex items-center justify-between max-w-7xl mx-auto w-full">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
             <Video className="w-5 h-5 text-white" />
@@ -91,7 +91,7 @@ export const LandingPage: React.FC = () => {
 
       {/* Hero Section & Form */}
       <main className="flex-grow flex items-center justify-center px-4 py-12 relative z-10">
-        <div className="max-w-6xl w-full grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+        <div className="max-w-6xl w-full grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-12 items-center">
           
           {/* Tagline and Features list */}
           <div className="lg:col-span-7 space-y-6 text-left">
@@ -99,7 +99,7 @@ export const LandingPage: React.FC = () => {
               🎓 Supporting Digital Classrooms Everywhere
             </div>
             
-            <h2 className="text-4xl md:text-6xl font-black leading-tight tracking-tight text-slate-800">
+            <h2 className="text-3xl sm:text-4xl md:text-6xl font-black leading-tight tracking-tight text-slate-800">
               Smarter Meetings. <br />
               <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
                 Even at 45 Kbps.
@@ -233,7 +233,7 @@ export const LandingPage: React.FC = () => {
                 </div>
 
                 {/* Action Buttons */}
-                <div className="pt-2 grid grid-cols-2 gap-3">
+                <div className="pt-2 flex flex-col sm:grid sm:grid-cols-2 gap-3">
                   <button
                     type="button"
                     onClick={(e) => handleSubmit(e, false)}

@@ -36,11 +36,11 @@ export const SidebarTranscript: React.FC = () => {
     <AnimatePresence>
       {isTranscriptOpen && (
         <motion.div
-          initial={{ x: 380, opacity: 0.9 }}
+          initial={{ x: '100%', opacity: 0.9 }}
           animate={{ x: 0, opacity: 1 }}
-          exit={{ x: 380, opacity: 0.9 }}
+          exit={{ x: '100%', opacity: 0.9 }}
           transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-          className="fixed top-0 right-0 h-full w-80 md:w-96 bg-white border-l border-purple-200 shadow-2xl flex flex-col z-30 no-print"
+          className="fixed top-0 right-0 h-full w-full sm:w-96 bg-white border-l border-purple-200 shadow-2xl flex flex-col z-30 no-print"
         >
           {/* Sidebar Header */}
           <div className="p-4 border-b border-purple-100 flex items-center justify-between bg-purple-50/50">

@@ -90,24 +90,24 @@ export const PostMeetingSummary: React.FC = () => {
       <div className="max-w-4xl mx-auto space-y-8 relative z-10">
         
         {/* Navigation / Header */}
-        <div className="flex items-center justify-between no-print">
+        <div className="flex flex-col sm:flex-row gap-4 items-center justify-between no-print">
           <button 
             onClick={() => setMeetingStatus('landing')}
-            className="flex items-center gap-2 text-xs font-bold text-slate-600 hover:text-slate-900 transition-colors bg-white border border-purple-200 py-2 px-3.5 rounded-xl hover:bg-slate-50 shadow-sm"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 text-xs font-bold text-slate-600 hover:text-slate-900 transition-colors bg-white border border-purple-200 py-2 px-3.5 rounded-xl hover:bg-slate-50 shadow-sm"
           >
             <ArrowLeft className="w-4 h-4" /> Back to Landing Page
           </button>
           
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
             <button 
               onClick={handleDownloadText}
-              className="flex items-center gap-2 text-xs font-bold text-slate-750 hover:text-slate-900 transition-colors border border-purple-200 bg-white hover:bg-slate-50 py-2 px-4 rounded-xl shadow-sm"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 text-xs font-bold text-slate-750 hover:text-slate-900 transition-colors border border-purple-200 bg-white hover:bg-slate-50 py-2 px-4 rounded-xl shadow-sm"
             >
               <Download className="w-4 h-4 text-slate-500" /> Save Notes (TXT)
             </button>
             <button 
               onClick={handlePrintPDF}
-              className="flex items-center gap-2 text-xs font-bold text-white transition-colors border border-blue-500 bg-blue-600 hover:bg-blue-700 py-2 px-4 rounded-xl shadow-md hover:shadow-blue-500/10"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 text-xs font-bold text-white transition-colors border border-blue-500 bg-blue-600 hover:bg-blue-700 py-2 px-4 rounded-xl shadow-md hover:shadow-blue-500/10"
             >
               <Printer className="w-4 h-4" /> Download PDF Summary
             </button>
@@ -125,7 +125,7 @@ export const PostMeetingSummary: React.FC = () => {
         <div className="glass-panel rounded-3xl p-6 sm:p-8 space-y-8 shadow-xl print-card border border-purple-200">
           
           {/* Metadata banner */}
-          <div className="grid grid-cols-3 gap-4 border-b border-purple-100 pb-6 print:border-slate-300">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 border-b border-purple-100 pb-6 print:border-slate-300">
             <div className="flex items-center gap-3">
               <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-600 print:text-black">
                 <BookOpen className="w-5 h-5" />
