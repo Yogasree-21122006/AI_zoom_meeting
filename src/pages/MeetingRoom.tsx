@@ -29,7 +29,11 @@ export const MeetingRoom: React.FC = () => {
     addToast,
     transcriptLanguage,
     transcriptionService,
-    sendAudioChunkFn
+    sendAudioChunkFn,
+    transcript,
+    isTtsEnabled,
+    isRecording,
+    recordingDuration
   } = useMeetingStore();
 
   const { currentTier, downlinkSpeed, effectiveType } = useNetworkDetection(bandwidthTier);
@@ -154,7 +158,7 @@ export const MeetingRoom: React.FC = () => {
     }
 
     // Dynamically update the language setting
-    recognitionRef.current.lang = transcriptLanguage;
+    recognitionRef.current.lang = transcriptLanguage === 'tanglish' ? 'ta-IN' : transcriptLanguage;
 
     if (shouldListen) {
       shouldListenRef.current = true;
@@ -331,6 +335,244 @@ export const MeetingRoom: React.FC = () => {
     };
   }, [transcriptionService, localStream, isMuted, bandwidthTier, sendAudioChunkFn, transcriptLanguage, setParticipants]);
 
+  // TTS (Text-To-Speech) Live Announcements for Blind Users
+  const lastSpokenEntryIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!isTtsEnabled || transcript.length === 0) return;
+    const lastEntry = transcript[transcript.length - 1];
+    
+    // Avoid announcing system logs or re-announcing same entry
+    if (lastEntry.sender === 'System') return;
+    if (lastSpokenEntryIdRef.current === lastEntry.id) return;
+    
+    lastSpokenEntryIdRef.current = lastEntry.id;
+    
+    const senderClean = lastEntry.sender.replace(' (You)', '');
+    const speechText = `${senderClean} says: ${lastEntry.text}`;
+    
+    const utterance = new SpeechSynthesisUtterance(speechText);
+    
+    // Automatically set language to Tamil if Tamil characters are present
+    const isTamilText = /[\u0b80-\u0bff]/.test(lastEntry.text);
+    utterance.lang = isTamilText ? 'ta-IN' : 'en-US';
+    
+    // Cancel any ongoing speaking to avoid accumulation delay
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  }, [transcript, isTtsEnabled]);
+
+  // Alt+S Keyboard Shortcut to toggle TTS Announcements
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.altKey && (e.key === 's' || e.key === 'S' || e.key === 'ы')) {
+        e.preventDefault();
+        useMeetingStore.getState().toggleTts();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Screen/Audio Recorder References
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingStreamRef = useRef<MediaStream | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const recIntervalRef = useRef<any>(null);
+
+  // Recorder Logic
+  const startRecording = async (type: 'video' | 'audio') => {
+    try {
+      let captureStream: MediaStream;
+
+      if (type === 'video') {
+        // Prompt for screen share with system audio
+        captureStream = await navigator.mediaDevices.getDisplayMedia({
+          video: {
+            displaySurface: "browser",
+          },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+          }
+        });
+      } else {
+        // Audio capture: Chrome requires video channel in displayMedia to fetch system audio tab sharing
+        try {
+          const tempStream = await navigator.mediaDevices.getDisplayMedia({
+            video: true,
+            audio: true
+          });
+          
+          // Drop video tracks, keep only system audio track
+          const audioTracks = tempStream.getAudioTracks();
+          if (audioTracks.length === 0) {
+            tempStream.getTracks().forEach(t => t.stop());
+            throw new Error("System audio was not shared. Please check 'Share system audio'.");
+          }
+          captureStream = new MediaStream(audioTracks);
+        } catch (err: any) {
+          console.warn("Display media audio fetch failed/cancelled, falling back to mic stream only:", err);
+          const micTracks = localStream ? localStream.getAudioTracks() : [];
+          if (micTracks.length > 0) {
+            captureStream = new MediaStream([micTracks[0].clone()]);
+          } else {
+            addToast("No microphone stream available for audio-only recording.", "error");
+            return;
+          }
+        }
+      }
+
+      // Mix screen/system audio with user microphone audio using Web Audio API
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const audioCtx = new AudioCtx();
+      audioContextRef.current = audioCtx;
+      
+      const mixedDest = audioCtx.createMediaStreamDestination();
+      let hasAudioSource = false;
+
+      // 1. Add screen capture/system audio
+      if (captureStream.getAudioTracks().length > 0) {
+        const systemNode = audioCtx.createMediaStreamSource(captureStream);
+        systemNode.connect(mixedDest);
+        hasAudioSource = true;
+      }
+
+      // 2. Add local microphone audio track
+      const micTracks = localStream ? localStream.getAudioTracks() : [];
+      if (micTracks.length > 0 && !isMuted) {
+        const clonedMicStream = new MediaStream([micTracks[0].clone()]);
+        const micNode = audioCtx.createMediaStreamSource(clonedMicStream);
+        micNode.connect(mixedDest);
+        hasAudioSource = true;
+      }
+
+      // Compose final recording media tracks list
+      const recordingTracks: MediaStreamTrack[] = [];
+      
+      if (type === 'video' && captureStream.getVideoTracks().length > 0) {
+        recordingTracks.push(captureStream.getVideoTracks()[0]);
+      }
+
+      if (hasAudioSource) {
+        recordingTracks.push(mixedDest.stream.getAudioTracks()[0]);
+      } else if (captureStream.getAudioTracks().length > 0) {
+        recordingTracks.push(captureStream.getAudioTracks()[0]);
+      } else if (micTracks.length > 0) {
+        recordingTracks.push(micTracks[0]);
+      }
+
+      const finalRecordStream = new MediaStream(recordingTracks);
+      recordingStreamRef.current = finalRecordStream;
+
+      // Setup browser MediaRecorder
+      const mimeOptions = { mimeType: type === 'video' ? 'video/webm;codecs=vp8,opus' : 'audio/webm;codecs=opus' };
+      let recorder: MediaRecorder;
+      
+      try {
+        recorder = new MediaRecorder(finalRecordStream, mimeOptions);
+      } catch (e) {
+        console.warn("Selected mimeType is not supported. Reverting to browser default codec options.", e);
+        recorder = new MediaRecorder(finalRecordStream);
+      }
+
+      const recordChunks: Blob[] = [];
+      recorder.ondataavailable = (ev) => {
+        if (ev.data && ev.data.size > 0) {
+          recordChunks.push(ev.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        // Clean up capture streams and audio contexts
+        captureStream.getTracks().forEach(t => t.stop());
+        finalRecordStream.getTracks().forEach(t => t.stop());
+        if (audioCtx.state !== 'closed') {
+          audioCtx.close();
+        }
+
+        // Create file payload download link
+        if (recordChunks.length > 0) {
+          const fileBlob = new Blob(recordChunks, { type: type === 'video' ? 'video/webm' : 'audio/webm' });
+          const fileUrl = URL.createObjectURL(fileBlob);
+          
+          const dlLink = document.createElement('a');
+          dlLink.href = fileUrl;
+          dlLink.download = `Class_Recording_${roomId}_${Date.now()}.${type === 'video' ? 'webm' : 'webm'}`;
+          document.body.appendChild(dlLink);
+          dlLink.click();
+          document.body.removeChild(dlLink);
+          URL.revokeObjectURL(fileUrl);
+          
+          addToast("Meeting recording saved and downloaded successfully!", "info");
+        } else {
+          addToast("Failed to compile recording: No stream chunks captured.", "error");
+        }
+
+        // Reset recording store states
+        useMeetingStore.setState({ isRecording: false, recordingType: null, recordingDuration: 0 });
+      };
+
+      // Handle external termination event (e.g. user clicks native Chrome stop sharing button)
+      if (captureStream.getVideoTracks().length > 0) {
+        captureStream.getVideoTracks()[0].addEventListener('ended', () => {
+          stopRecording();
+        });
+      }
+
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+
+      useMeetingStore.setState({
+        isRecording: true,
+        recordingType: type,
+        recordingDuration: 0
+      });
+
+      addToast(`Meeting ${type === 'video' ? 'Video & Audio' : 'Audio-Only'} recording active.`, "info");
+
+      if (recIntervalRef.current) clearInterval(recIntervalRef.current);
+      recIntervalRef.current = setInterval(() => {
+        useMeetingStore.getState().setRecordingDuration(d => d + 1);
+      }, 1000);
+
+    } catch (err: any) {
+      console.error("Recording setup error:", err);
+      addToast(`Could not start recorder: ${err.message || err}`, "error");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    if (recIntervalRef.current) {
+      clearInterval(recIntervalRef.current);
+      recIntervalRef.current = null;
+    }
+  };
+
+  // Register recording callbacks in store
+  useEffect(() => {
+    useMeetingStore.setState({
+      startRecordingFn: startRecording,
+      stopRecordingFn: stopRecording
+    });
+
+    return () => {
+      useMeetingStore.setState({
+        startRecordingFn: null,
+        stopRecordingFn: null
+      });
+      if (recIntervalRef.current) clearInterval(recIntervalRef.current);
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        try {
+          mediaRecorderRef.current.stop();
+        } catch (e) {}
+      }
+    };
+  }, [localStream, isMuted, roomId]);
+
   const handleCopyLink = () => {
     const origin = window.location.origin;
     const inviteUrl = `${origin}/room/${roomId}`;
@@ -374,6 +616,12 @@ export const MeetingRoom: React.FC = () => {
             <Clock className="w-3 h-3 text-blue-600" />
             <span>{formatTime(meetingDuration)}</span>
           </div>
+          {isRecording && (
+            <div className="px-2 py-0.5 sm:px-2.5 sm:py-1 bg-rose-50 border border-rose-200 text-rose-700 text-[10px] sm:text-xs font-mono font-bold rounded-lg flex items-center gap-1.5 shadow-sm animate-pulse">
+              <span className="w-2 h-2 rounded-full bg-rose-600 animate-ping" style={{ animationDuration: '1.2s' }} />
+              <span>REC {formatTime(recordingDuration)}</span>
+            </div>
+          )}
         </div>
 
         {/* Center: Bandwidth Mode Badges - Clickable on mobile to trigger simulator */}

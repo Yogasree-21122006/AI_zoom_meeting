@@ -36,7 +36,10 @@ if (apiKey) {
 
 // Fallback/Free transcription helper using Hugging Face Serverless Inference API
 async function transcribeWithHuggingFace(buffer, language, retries = 3) {
-  const whisperLang = language ? language.split('-')[0] : 'en';
+  let whisperLang = language ? language.split('-')[0] : 'en';
+  if (whisperLang === 'tanglish') {
+    whisperLang = 'ta';
+  }
   // Use whisper-large-v3-turbo which is super fast and completely free
   const modelUrl = `https://api-inference.huggingface.co/models/openai/whisper-large-v3-turbo`;
   
@@ -85,9 +88,126 @@ async function transcribeWithHuggingFace(buffer, language, retries = 3) {
 const app = express();
 const port = process.env.PORT || 3001;
 
+// Middleware to parse JSON bodies
+app.use(express.json());
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.send({ status: 'running', timestamp: new Date() });
+});
+
+// Gemini API Summarization Endpoint
+app.post('/api/summarize', async (req, res) => {
+  const { transcript, apiKey: customApiKey } = req.body;
+  const apiKey = customApiKey || process.env.GEMINI_API_KEY;
+
+  if (!apiKey) {
+    return res.status(400).json({ 
+      error: 'GEMINI_API_KEY is missing. Please configure it in your server .env file or input it in the UI.' 
+    });
+  }
+
+  if (!transcript || !Array.isArray(transcript) || transcript.length === 0) {
+    return res.status(400).json({ error: 'Transcript is empty or invalid.' });
+  }
+
+  // Format the transcript as text
+  const formattedTranscript = transcript
+    .map(entry => `[${entry.timestamp || ''}] ${entry.sender || 'Unknown'}: "${entry.text || ''}"`)
+    .join('\n');
+
+  const systemPrompt = `You are a multilingual AI assistant specializing in classroom education and meeting summarization. 
+Analyze the following transcript of an online meeting or class. The discussion can be in English, Tamil, or Tanglish (Tamil mixed with English, written in English letters or Tamil script).
+Your task is to generate a structured meeting summary.
+
+Determine the dominant language of the transcript:
+- If English is dominant, generate the summary in English.
+- If Tamil OR Tanglish is dominant (or if there is any Tamil spoken, even if written in Tamil script like 'வணக்கம்' or 'நண்பா'), you MUST generate the summary in Tanglish (Tamil spoken using the English/Latin alphabet, e.g., 'vanakkam', 'nandri', 'schedule check pannunga', 'class cancel aairuchu'). 
+- DO NOT use Tamil alphabet script (like 'தமிழ்', 'வணக்கம்') anywhere in the output. Translate/transliterate all Tamil sounds and words into English/Latin letters. Blend English and Tamil naturally as Tanglish.
+
+You MUST respond with a valid JSON object matching the following structure:
+{
+  "title": "A concise, appropriate title for the class/meeting (written in English or Tanglish using English letters)",
+  "keyTakeaways": [
+    "Takeaway 1 explaining a main topic discussed (in English or Tanglish)",
+    "Takeaway 2 explaining another main topic (in English or Tanglish)",
+    "..."
+  ],
+  "decisions": [
+    "Decision 1 made during the meeting (in English or Tanglish)",
+    "Decision 2..."
+  ],
+  "actionItems": [
+    {
+      "assignee": "Name of person or group (e.g. 'All Students', 'Prof. Jenkins', or student name)",
+      "task": "The specific task to complete (written in English or Tanglish using English letters)"
+    }
+  ]
+}
+
+Ensure all arrays have at least 1-4 items depending on transcript length.
+Respond ONLY with the raw JSON object. Do not include markdown code block formatting (like \`\`\`json) or any other text before or after the JSON payload. Make sure it is valid JSON.`;
+
+  try {
+    const modelUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+    const response = await fetch(`${modelUrl}?key=${apiKey}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              {
+                text: `${systemPrompt}\n\nTranscript:\n${formattedTranscript}`
+              }
+            ]
+          }
+        ],
+        generationConfig: {
+          responseMimeType: 'application/json'
+        }
+      })
+    });
+
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.error?.message || `Gemini API returned status ${response.status}`);
+    }
+
+    const textResponse = result.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!textResponse) {
+      throw new Error('Gemini API returned an empty response.');
+    }
+
+    // Parse the JSON output from the model using a robust boundary extraction method
+    let summaryData;
+    const trimmedResponse = textResponse.trim();
+    try {
+      summaryData = JSON.parse(trimmedResponse);
+    } catch (e) {
+      console.warn('[Gemini Parser] Direct parse failed, trying boundary extraction...', e.message);
+      try {
+        const start = trimmedResponse.indexOf('{');
+        const end = trimmedResponse.lastIndexOf('}');
+        if (start !== -1 && end !== -1 && end > start) {
+          const jsonContent = trimmedResponse.substring(start, end + 1);
+          summaryData = JSON.parse(jsonContent);
+        } else {
+          throw new Error("JSON boundary markers not found.");
+        }
+      } catch (parseErr) {
+        console.error('[Gemini Parser Error] Failed to parse JSON response:', textResponse);
+        throw new Error('LLM did not return a valid JSON summary: ' + parseErr.message);
+      }
+    }
+
+    res.json(summaryData);
+  } catch (err) {
+    console.error('[Gemini Summary Error]:', err);
+    res.status(500).json({ error: err.message || 'Failed to generate summary' });
+  }
 });
 
 const server = createServer(app);
@@ -233,7 +353,10 @@ wss.on('connection', (ws) => {
                 const tempFilePath = path.join(tempDir, `chunk_${ws.id}_${Date.now()}.${ext}`);
                 fs.writeFileSync(tempFilePath, buffer);
 
-                const whisperLang = language ? language.split('-')[0] : 'en';
+                let whisperLang = language ? language.split('-')[0] : 'en';
+                if (whisperLang === 'tanglish') {
+                  whisperLang = 'ta';
+                }
 
                 const response = await openai.audio.transcriptions.create({
                   file: fs.createReadStream(tempFilePath),

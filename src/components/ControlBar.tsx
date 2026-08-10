@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useMeetingStore } from '../store/useMeetingStore';
-import { Mic, MicOff, Video, VideoOff, LogOut, FileText, Wifi } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, LogOut, FileText, Wifi, Volume2, VolumeX, Circle, Square } from 'lucide-react';
 
 export const ControlBar: React.FC = () => {
   const {
@@ -16,7 +16,14 @@ export const ControlBar: React.FC = () => {
     setTranscriptLanguage,
     transcriptionService,
     setTranscriptionService,
+    isTtsEnabled,
+    toggleTts,
+    isRecording,
+    startRecordingFn,
+    stopRecordingFn,
   } = useMeetingStore();
+
+  const [showRecordMenu, setShowRecordMenu] = useState(false);
 
   const isCameraDisabled = bandwidthTier === 'medium' || bandwidthTier === 'low';
   const isMicDisabled = bandwidthTier === 'low';
@@ -74,12 +81,13 @@ export const ControlBar: React.FC = () => {
           <select
             value={transcriptLanguage}
             disabled={isMicDisabled}
-            onChange={(e) => setTranscriptLanguage(e.target.value as 'ta-IN' | 'en-US')}
-            className="w-full bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl px-2 py-2.5 md:px-2.5 md:py-3 hover:bg-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            onChange={(e) => setTranscriptLanguage(e.target.value as 'ta-IN' | 'en-US' | 'tanglish')}
+            className="w-full bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl px-2 py-2.5 md:px-2.5 md:py-3 hover:bg-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-ellipsis overflow-hidden"
             title="Microphone Transcription Language"
           >
             <option value="ta-IN">Tamil (தமிழ்)</option>
             <option value="en-US">English (US)</option>
+            <option value="tanglish">Tanglish (தமிழ் in English)</option>
           </select>
         </div>
 
@@ -137,6 +145,82 @@ export const ControlBar: React.FC = () => {
                 {bandwidthTier === 'medium' ? 'Disabled in audio mode' : 'Disabled in captions mode'}
               </div>
             )}
+          </div>
+
+          {/* TTS Toggle Button */}
+          <div className="relative group">
+            <button
+              onClick={toggleTts}
+              className={`p-3.5 rounded-xl border transition-all duration-300 flex items-center justify-center ${
+                isTtsEnabled
+                  ? 'bg-blue-600 border-blue-700 text-white hover:bg-blue-700 shadow-[0_0_15px_rgba(37,99,235,0.25)]'
+                  : 'bg-slate-100 border-slate-200 hover:bg-slate-200 text-slate-700'
+              }`}
+              title="Toggle Speech Feedback (Alt+S) for Blind Users"
+            >
+              {isTtsEnabled ? (
+                <Volume2 className="w-5 h-5 text-white" />
+              ) : (
+                <VolumeX className="w-5 h-5 text-slate-500" />
+              )}
+            </button>
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-slate-800 text-white text-[10px] py-1 px-2 rounded-md shadow-lg border border-slate-700 whitespace-nowrap z-50">
+              TTS Reader (Alt+S)
+            </div>
+          </div>
+
+          {/* Recording Toggle */}
+          <div className="relative group">
+            {isRecording ? (
+              <button
+                onClick={() => stopRecordingFn && stopRecordingFn()}
+                className="p-3.5 rounded-xl border border-rose-600 bg-rose-50 hover:bg-rose-100 text-rose-600 flex items-center justify-center shadow-[0_0_15px_rgba(220,38,38,0.2)] animate-pulse animate-duration-1000"
+                title="Stop Recording Meeting"
+              >
+                <Square className="w-5 h-5 fill-rose-600" />
+              </button>
+            ) : (
+              <div className="relative">
+                <button
+                  onClick={() => setShowRecordMenu(!showRecordMenu)}
+                  className={`p-3.5 rounded-xl border transition-all duration-300 flex items-center justify-center ${
+                    showRecordMenu ? 'bg-slate-200 border-slate-300' : 'bg-slate-100 border-slate-200 hover:bg-slate-200 text-slate-700'
+                  }`}
+                  title="Record Meeting (Video or Audio)"
+                >
+                  <Circle className="w-5 h-5 fill-rose-500 text-rose-500" />
+                </button>
+                
+                {showRecordMenu && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowRecordMenu(false)} />
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-white border border-purple-100 rounded-xl shadow-xl p-1.5 flex flex-col gap-1 z-50 animate-fadeIn">
+                      <button
+                        onClick={() => {
+                          setShowRecordMenu(false);
+                          if (startRecordingFn) startRecordingFn('video');
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs font-bold text-slate-700 hover:bg-purple-50 hover:text-blue-600 rounded-lg transition-colors flex items-center gap-1.5"
+                      >
+                        <span>🎥</span> Record Video + Audio
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowRecordMenu(false);
+                          if (startRecordingFn) startRecordingFn('audio');
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs font-bold text-slate-700 hover:bg-purple-50 hover:text-blue-600 rounded-lg transition-colors flex items-center gap-1.5"
+                      >
+                        <span>🎙️</span> Record Audio Only
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-slate-800 text-white text-[10px] py-1 px-2 rounded-md shadow-lg border border-slate-700 whitespace-nowrap z-40">
+              {isRecording ? "Stop Recording" : "Record Meeting"}
+            </div>
           </div>
 
           {/* End / Leave Meeting */}

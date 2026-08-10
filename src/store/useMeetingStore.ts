@@ -38,7 +38,7 @@ interface MeetingState {
   // Live transcripts and captions
   captions: string;
   transcript: TranscriptEntry[];
-  transcriptLanguage: 'ta-IN' | 'en-US';
+  transcriptLanguage: 'ta-IN' | 'en-US' | 'tanglish';
   transcriptionService: 'webspeech' | 'whisper';
   
   // Participants
@@ -46,6 +46,19 @@ interface MeetingState {
   
   // Custom Toast system
   toasts: Toast[];
+
+  // Accessibility (TTS) & AI Summarization & Screen Recording state
+  isTtsEnabled: boolean;
+  aiSummaryData: { title: string; keyTakeaways: string[]; decisions: string[]; actionItems: { assignee: string; task: string }[] } | null;
+  isSummarizing: boolean;
+  isRecording: boolean;
+  recordingDuration: number;
+  recordingType: 'video' | 'audio' | null;
+  customGeminiKey: string;
+
+  // Recording action callbacks registered by the UI
+  startRecordingFn: ((type: 'video' | 'audio') => Promise<void>) | null;
+  stopRecordingFn: (() => void) | null;
 
   // Send chat message callback
   sendChatMessageFn: ((text: string) => void) | null;
@@ -59,7 +72,7 @@ interface MeetingState {
   recalculateAppliedTier: () => void;
   setIsAutoNetworkMode: (auto: boolean) => void;
   setManualTier: (tier: BandwidthTier) => void;
-  setTranscriptLanguage: (lang: 'ta-IN' | 'en-US') => void;
+  setTranscriptLanguage: (lang: 'ta-IN' | 'en-US' | 'tanglish') => void;
   setTranscriptionService: (service: 'webspeech' | 'whisper') => void;
   setMeetingStatus: (status: 'landing' | 'active' | 'ended') => void;
   joinMeeting: (userName: string, roomId: string, role: 'teacher' | 'student', startTier: BandwidthTier) => void;
@@ -75,6 +88,12 @@ interface MeetingState {
   addToast: (text: string, type: 'info' | 'warning' | 'error' | 'predictive') => void;
   removeToast: (id: string) => void;
   incrementDuration: () => void;
+  toggleTts: () => void;
+  setRecordingState: (isRecording: boolean, type: 'video' | 'audio' | null) => void;
+  setRecordingDuration: (duration: number | ((prev: number) => number)) => void;
+  generateAiSummary: (customApiKey?: string) => Promise<void>;
+  resetSummary: () => void;
+  setCustomGeminiKey: (key: string) => void;
 }
 
 const MOCK_PARTICIPANTS: Participant[] = [
@@ -108,9 +127,18 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
   transcriptionService: 'webspeech',
   participants: [],
   toasts: [],
+  startRecordingFn: null,
+  stopRecordingFn: null,
   sendChatMessageFn: null,
   sendAudioChunkFn: null,
   mySignalingId: '',
+  isTtsEnabled: false,
+  aiSummaryData: null,
+  isSummarizing: false,
+  isRecording: false,
+  recordingDuration: 0,
+  recordingType: null,
+  customGeminiKey: typeof window !== 'undefined' ? (localStorage.getItem('gemini_api_key') || '') : '',
 
   setTierFromDetection: (tier) => {
     const currentReal = get().realDetectedTier;
@@ -372,5 +400,78 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
 
   incrementDuration: () => set((state) => ({
     meetingDuration: state.meetingDuration + 1
-  }))
+  })),
+
+  toggleTts: () => {
+    const nextState = !get().isTtsEnabled;
+    set({ isTtsEnabled: nextState });
+    get().addToast(
+      nextState ? 'Voice Announcements (TTS) Enabled' : 'Voice Announcements (TTS) Disabled',
+      'info'
+    );
+  },
+
+  setRecordingState: (isRecording, type) => {
+    set({ isRecording, recordingType: type, recordingDuration: 0 });
+  },
+
+  setRecordingDuration: (duration) => {
+    if (typeof duration === 'function') {
+      set((state) => ({ recordingDuration: duration(state.recordingDuration) }));
+    } else {
+      set({ recordingDuration: duration });
+    }
+  },
+
+  setCustomGeminiKey: (key) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('gemini_api_key', key);
+    }
+    set({ customGeminiKey: key });
+  },
+
+  resetSummary: () => set({ aiSummaryData: null, isSummarizing: false }),
+
+  generateAiSummary: async (customApiKey) => {
+    const transcript = get().transcript;
+    const validTranscript = transcript.filter(t => t.sender !== 'System');
+    if (validTranscript.length === 0) {
+      get().addToast('Cannot generate summary: Transcript is empty.', 'error');
+      return;
+    }
+
+    set({ isSummarizing: true });
+    get().addToast('AI Summarizer is analyzing meeting notes...', 'info');
+
+    const usedApiKey = customApiKey || get().customGeminiKey;
+
+    try {
+      const serverUrl = import.meta.env.VITE_SIGNALING_SERVER_URL || 'ws://localhost:3001';
+      const httpBackendUrl = serverUrl.replace(/^ws/, 'http');
+
+      const response = await fetch(`${httpBackendUrl}/api/summarize`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          transcript: validTranscript,
+          apiKey: usedApiKey || undefined,
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || `Server returned status ${response.status}`);
+      }
+
+      set({ aiSummaryData: result });
+      get().addToast('AI Summary successfully generated!', 'info');
+    } catch (err: any) {
+      console.error('[AI Summary Store Error]:', err);
+      get().addToast(`Summary generation failed: ${err.message || err}`, 'error');
+    } finally {
+      set({ isSummarizing: false });
+    }
+  }
 }));

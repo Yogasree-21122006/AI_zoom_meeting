@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useMeetingStore } from '../store/useMeetingStore';
 import { 
   FileText, 
@@ -21,10 +21,23 @@ export const PostMeetingSummary: React.FC = () => {
     participants, 
     meetingDuration, 
     roomId, 
-    setMeetingStatus 
+    setMeetingStatus,
+    aiSummaryData,
+    isSummarizing,
+    generateAiSummary
   } = useMeetingStore();
 
   const [isTranscriptExpanded, setIsTranscriptExpanded] = useState(false);
+
+  // Filter out system entries to check valid transcription content
+  const validTranscript = transcript.filter(t => t.sender !== 'System');
+
+  // Trigger summary generation on mount if not already done
+  useEffect(() => {
+    if (!aiSummaryData && !isSummarizing && validTranscript.length > 0) {
+      generateAiSummary();
+    }
+  }, [transcript, aiSummaryData, isSummarizing, generateAiSummary]);
 
   // Format seconds to readable MM:SS or HH:MM:SS
   const formatDuration = (seconds: number) => {
@@ -33,25 +46,71 @@ export const PostMeetingSummary: React.FC = () => {
     return `${mins}m ${secs}s`;
   };
 
-  // Mock AI summary data
+  const summaryDate = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+  // Handle Loading screen
+  if (isSummarizing || (!aiSummaryData && validTranscript.length > 0)) {
+    return (
+      <div className="min-h-screen bg-gradient-to-tr from-purple-100 via-indigo-50 to-purple-200 flex items-center justify-center p-4">
+        <div className="bg-white/80 backdrop-blur-xl border border-purple-200 rounded-3xl p-8 max-w-md w-full text-center shadow-2xl space-y-6">
+          <div className="relative w-16 h-16 mx-auto">
+            <div className="absolute inset-0 rounded-full border-4 border-purple-100" />
+            <div className="absolute inset-0 rounded-full border-4 border-blue-600 border-t-transparent animate-spin" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-xl font-extrabold text-slate-800 animate-pulse">Generating AI Summary...</h2>
+            <p className="text-sm text-slate-500 leading-relaxed font-semibold">
+              Gemini is transcribing and summarizing your class dialogue into key takeaways, decisions, and action items.
+            </p>
+          </div>
+          <div className="pt-2">
+            <span className="inline-block px-3 py-1 bg-slate-100 text-slate-500 text-[10px] rounded-full font-mono border border-slate-200 font-semibold animate-pulse">
+              Adapting: English • Tamil • Tanglish
+            </span>
+          </div>
+          <button 
+            onClick={() => setMeetingStatus('landing')}
+            className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs font-bold text-slate-650 transition-colors border border-slate-200"
+          >
+            Cancel and Return Home
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Handle Empty transcript warning
+  if (!aiSummaryData && validTranscript.length === 0) {
+    return (
+      <div className="min-h-screen bg-gradient-to-tr from-purple-100 via-indigo-50 to-purple-200 flex items-center justify-center p-4">
+        <div className="bg-white/80 backdrop-blur-xl border border-purple-200 rounded-3xl p-8 max-w-md w-full text-center shadow-2xl space-y-6">
+          <div className="p-4 bg-rose-50 border border-rose-100 rounded-full w-16 h-16 mx-auto flex items-center justify-center">
+            <FileText className="w-8 h-8 text-rose-500" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-xl font-extrabold text-slate-800">Empty Transcript Log</h2>
+            <p className="text-sm text-slate-500 leading-relaxed font-semibold">
+              No audio transcripts or chat dialogues were captured during this classroom session.
+            </p>
+          </div>
+          <button 
+            onClick={() => setMeetingStatus('landing')}
+            className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-colors shadow-md hover:shadow-blue-500/10"
+          >
+            Back to Landing Page
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Dynamic AI summary properties linked to state
   const aiSummary = {
-    title: "Geography 101: Water Cycle & Aquifers",
-    date: new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
-    keyTakeaways: [
-      "Reviewed the main stages of the water cycle: Evaporation, Transpiration, Condensation, and Precipitation.",
-      "Discussed how soil density impacts percolation. Sand features high percolation rates due to spacing, whereas compact clay blocks infiltration.",
-      "Identified that clay-rich ground surfaces trigger immediate runoff, leading to increased erosion and preventing aquifer recharging.",
-      "Clarified that transpiration is water loss specifically from plants/leaves, which is separate from standard ground evaporation."
-    ],
-    decisions: [
-      "Midterm exam will officially require drawing and labeling the percolation-groundwater flow diagram.",
-      "Weekly lab class will be dedicated to testing water infiltration rates in different local soil samples."
-    ],
-    actionItems: [
-      { assignee: "All Students", task: "Complete worksheets on transpiration vs. evaporation comparisons." },
-      { assignee: "All Students", task: "Read chapter 4 on Aquifer Layers (Pages 120-135) for Monday." },
-      { assignee: "Prof. Sarah", task: "Post the percolation diagram reference sheet on the portal." }
-    ]
+    title: aiSummaryData?.title || "Class Discussion Notes",
+    date: summaryDate,
+    keyTakeaways: aiSummaryData?.keyTakeaways || ["No takeaways captured."],
+    decisions: aiSummaryData?.decisions || ["No major decisions logged."],
+    actionItems: aiSummaryData?.actionItems || []
   };
 
   // Triggers browser print, which matches the styled PDF layout via CSS @media print
