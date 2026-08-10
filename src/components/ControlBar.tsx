@@ -92,14 +92,18 @@ export const ControlBar: React.FC = () => {
               disabled={isMicDisabled}
               className={`p-3.5 rounded-xl border transition-all duration-300 flex items-center justify-center ${
                 isMicDisabled
-                  ? 'bg-slate-50 border-rose-200 text-rose-300 cursor-not-allowed'
+                  ? 'bg-slate-50 border-rose-200 text-rose-350 cursor-not-allowed'
                   : isMuted
-                  ? 'bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100'
-                  : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
+                  ? 'bg-slate-100 border-slate-200 hover:bg-slate-200'
+                  : 'bg-emerald-600 border-emerald-700 text-white hover:bg-emerald-700 shadow-[0_0_15px_rgba(16,185,129,0.25)]'
               }`}
               title={isMicDisabled ? "Mic disabled in Low Bandwidth mode" : isMuted ? "Unmute Microphone" : "Mute Microphone"}
             >
-              {isMuted || isMicDisabled ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+              {isMuted || isMicDisabled ? (
+                <MicOff className="w-5 h-5 text-rose-500" />
+              ) : (
+                <Mic className="w-5 h-5 text-white" />
+              )}
             </button>
             {isMicDisabled && (
               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-slate-800 text-rose-400 text-[10px] py-1 px-2 rounded-md shadow-lg border border-rose-500/20 whitespace-nowrap z-50">
@@ -115,14 +119,18 @@ export const ControlBar: React.FC = () => {
               disabled={isCameraDisabled}
               className={`p-3.5 rounded-xl border transition-all duration-300 flex items-center justify-center ${
                 isCameraDisabled
-                  ? 'bg-slate-50 border-rose-200 text-rose-300 cursor-not-allowed'
+                  ? 'bg-slate-50 border-rose-200 text-rose-350 cursor-not-allowed'
                   : !isCameraOn
-                  ? 'bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100'
-                  : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
+                  ? 'bg-slate-100 border-slate-200 hover:bg-slate-200'
+                  : 'bg-indigo-600 border-indigo-700 text-white hover:bg-indigo-700 shadow-[0_0_15px_rgba(79,70,229,0.25)]'
               }`}
               title={isCameraDisabled ? "Camera disabled to save bandwidth" : isCameraOn ? "Turn Camera Off" : "Turn Camera On"}
             >
-              {!isCameraOn || isCameraDisabled ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
+              {!isCameraOn || isCameraDisabled ? (
+                <VideoOff className="w-5 h-5 text-rose-500" />
+              ) : (
+                <Video className="w-5 h-5 text-white" />
+              )}
             </button>
             {isCameraDisabled && (
               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-slate-800 text-rose-400 text-[10px] py-1 px-2 rounded-md shadow-lg border border-rose-500/20 whitespace-nowrap z-50">
