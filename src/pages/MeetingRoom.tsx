@@ -72,6 +72,7 @@ export const MeetingRoom: React.FC = () => {
   const shouldListen = !isMuted && bandwidthTier !== 'low' && transcriptionService === 'webspeech';
   const shouldListenRef = useRef(shouldListen);
   shouldListenRef.current = shouldListen;
+  const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -80,87 +81,102 @@ export const MeetingRoom: React.FC = () => {
       return;
     }
 
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = transcriptLanguage;
+    if (!recognitionRef.current) {
+      const rec = new SpeechRecognition();
+      rec.continuous = true;
+      rec.interimResults = true;
 
-    recognition.onresult = (event: any) => {
-      let interimTranscript = '';
-      let finalTranscript = '';
+      rec.onresult = (event: any) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
 
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript;
-        } else {
-          interimTranscript += event.results[i][0].transcript;
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript;
+          } else {
+            interimTranscript += event.results[i][0].transcript;
+          }
         }
-      }
 
-      const activeText = finalTranscript || interimTranscript;
-      if (activeText.trim()) {
-        // Set local captions overlay text
-        setCaptions(`${userName} (You): "${activeText}"`);
+        const activeText = finalTranscript || interimTranscript;
+        if (activeText.trim()) {
+          // Set local captions overlay text
+          setCaptions(`${userName} (You): "${activeText}"`);
 
-        // Set local user as speaking to animate waveform (read state dynamically to prevent effect reset)
-        const currentParts = useMeetingStore.getState().participants;
-        setParticipants(
-          currentParts.map((p) => 
-            p.id === 'local-user' ? { ...p, isSpeaking: true } : p
-          )
-        );
-
-        if (speakingTimeoutRef.current) {
-          clearTimeout(speakingTimeoutRef.current);
-        }
-        speakingTimeoutRef.current = setTimeout(() => {
-          const checkParts = useMeetingStore.getState().participants;
+          // Set local user as speaking to animate waveform
+          const currentParts = useMeetingStore.getState().participants;
           setParticipants(
-            checkParts.map((p) => 
-              p.id === 'local-user' ? { ...p, isSpeaking: false } : p
+            currentParts.map((p) => 
+              p.id === 'local-user' ? { ...p, isSpeaking: true } : p
             )
           );
-        }, 3000);
 
-        // If it's a final sentence, add to transcript list and broadcast to other peers
-        if (finalTranscript.trim()) {
-          addTranscriptEntry(finalTranscript.trim(), `${userName} (You)`, userRole);
-          if (useMeetingStore.getState().sendChatMessageFn) {
-            useMeetingStore.getState().sendChatMessageFn!(finalTranscript.trim());
+          if (speakingTimeoutRef.current) {
+            clearTimeout(speakingTimeoutRef.current);
+          }
+          speakingTimeoutRef.current = setTimeout(() => {
+            const checkParts = useMeetingStore.getState().participants;
+            setParticipants(
+              checkParts.map((p) => 
+                p.id === 'local-user' ? { ...p, isSpeaking: false } : p
+              )
+            );
+          }, 3000);
+
+          // If it's a final sentence, add to transcript list and broadcast to other peers
+          if (finalTranscript.trim()) {
+            addTranscriptEntry(finalTranscript.trim(), `${userName} (You)`, userRole);
+            if (useMeetingStore.getState().sendChatMessageFn) {
+              useMeetingStore.getState().sendChatMessageFn!(finalTranscript.trim());
+            }
           }
         }
-      }
-    };
+      };
 
-    recognition.onerror = (event: any) => {
-      console.warn("Speech recognition warning:", event.error);
-    };
+      rec.onerror = (event: any) => {
+        console.warn("Speech recognition warning:", event.error);
+      };
 
-    recognition.onend = () => {
-      // Auto restart with 400ms delay if mic is still active to prevent mic lock up
-      if (shouldListenRef.current) {
-        setTimeout(() => {
-          try {
-            recognition.start();
-          } catch (err) {
-            console.warn("Failed to restart speech recognition", err);
-          }
-        }, 400);
-      }
-    };
+      rec.onend = () => {
+        // Auto restart with 400ms delay if mic is still active
+        if (shouldListenRef.current) {
+          setTimeout(() => {
+            try {
+              recognitionRef.current?.start();
+            } catch (err) {
+              console.warn("Failed to restart speech recognition", err);
+            }
+          }, 400);
+        }
+      };
+
+      recognitionRef.current = rec;
+    }
+
+    // Dynamically update the language setting
+    recognitionRef.current.lang = transcriptLanguage;
 
     if (shouldListen) {
+      shouldListenRef.current = true;
       try {
-        recognition.start();
+        recognitionRef.current.start();
       } catch (err) {
-        console.error("SpeechRecognition start error:", err);
+        // ignore if already running
+      }
+    } else {
+      shouldListenRef.current = false;
+      try {
+        recognitionRef.current.stop();
+      } catch (err) {
+        // ignore
       }
     }
 
     return () => {
+      // Just stop, don't destroy to allow configuration reuse
       shouldListenRef.current = false;
       try {
-        recognition.stop();
+        recognitionRef.current?.stop();
       } catch (err) {
         // ignore
       }
