@@ -53,27 +53,39 @@ export const PresentationUploadModal: React.FC<{ isOpen: boolean; onClose: () =>
     try {
       // Calculate exact number of pages dynamically
       const detectedPages = await detectPdfPageCount(file);
-      const fileUrl = URL.createObjectURL(file);
-      
-      const newDoc: SharedDocument = {
-        id: `doc-${Date.now()}`,
-        fileName: file.name,
-        fileUrl: fileUrl,
-        fileType: file.type || 'application/pdf',
-        totalPages: detectedPages || 1,
-        currentPage: 1,
-        uploadedBy: userName,
-        uploadedRole: userRole,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+
+      // Convert file to base64 Data URL so all remote participants across the internet can view it
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64Url = reader.result as string;
+        const newDoc: SharedDocument = {
+          id: `doc-${Date.now()}`,
+          fileName: file.name,
+          fileUrl: base64Url,
+          fileType: file.type || 'application/pdf',
+          totalPages: detectedPages || 1,
+          currentPage: 1,
+          uploadedBy: userName,
+          uploadedRole: userRole,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+
+        shareDocument(newDoc);
+        addToast(`Shared presentation "${file.name}" (${detectedPages} ${detectedPages === 1 ? 'page' : 'pages'}) with all students!`, 'info');
+        onClose();
+        setIsUploading(false);
       };
 
-      shareDocument(newDoc);
-      addToast(`Shared presentation "${file.name}" (${detectedPages} ${detectedPages === 1 ? 'page' : 'pages'}) with all students!`, 'info');
-      onClose();
+      reader.onerror = (err) => {
+        console.error('File reader error:', err);
+        addToast('Failed to read presentation file.', 'error');
+        setIsUploading(false);
+      };
+
+      reader.readAsDataURL(file);
     } catch (err: any) {
       console.error('File upload error:', err);
       addToast(`Failed to upload presentation: ${err.message}`, 'error');
-    } finally {
       setIsUploading(false);
     }
   };

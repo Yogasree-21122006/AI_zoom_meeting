@@ -109,8 +109,8 @@ export const MeetingRoom: React.FC = () => {
           }
         }
 
-        const activeText = finalTranscript || interimTranscript;
-        if (activeText.trim()) {
+        const activeText = (finalTranscript || interimTranscript).trim();
+        if (activeText) {
           // Set local captions overlay text
           setCaptions(`${userName} (You): "${activeText}"`);
 
@@ -132,9 +132,9 @@ export const MeetingRoom: React.FC = () => {
                 p.id === 'local-user' ? { ...p, isSpeaking: false } : p
               )
             );
-          }, 3000);
+          }, 2500);
 
-          // If it's a final sentence, add to transcript list and broadcast to other peers
+          // If it's a final sentence, commit immediately
           if (finalTranscript.trim()) {
             addTranscriptEntry(finalTranscript.trim(), `${userName} (You)`, userRole);
             if (useMeetingStore.getState().sendChatMessageFn) {
@@ -145,19 +145,22 @@ export const MeetingRoom: React.FC = () => {
       };
 
       rec.onerror = (event: any) => {
-        console.warn("Speech recognition warning:", event.error);
+        // Ignore normal no-speech timeouts, just restart
+        if (event.error !== 'no-speech') {
+          console.warn("Speech recognition warning:", event.error);
+        }
       };
 
       rec.onend = () => {
-        // Auto restart with 400ms delay if mic is still active
+        // Auto restart with 200ms delay if mic is still active
         if (shouldListenRef.current) {
           setTimeout(() => {
             try {
               recognitionRef.current?.start();
             } catch (err) {
-              console.warn("Failed to restart speech recognition", err);
+              // ignore if already running
             }
-          }, 400);
+          }, 200);
         }
       };
 
