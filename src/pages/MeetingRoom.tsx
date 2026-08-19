@@ -6,9 +6,13 @@ import { LiveCaptions } from '../components/LiveCaptions';
 import { SidebarTranscript } from '../components/SidebarTranscript';
 import { BandwidthSimulator } from '../components/BandwidthSimulator';
 import { ToastNotification } from '../components/ToastNotification';
+import { EmojiReactionsOverlay } from '../components/EmojiReactions';
+import { PresentationViewer } from '../components/PresentationViewer';
+import { SmartMeetingTools } from '../components/SmartMeetingTools';
+import { DataSaverBanner } from '../components/DataSaverBanner';
 import { useNetworkDetection } from '../hooks/useNetworkDetection';
 import { useWebRTC } from '../hooks/useWebRTC';
-import { Users, Clock, Copy, Check } from 'lucide-react';
+import { Users, Clock, Copy, Check, Presentation } from 'lucide-react';
 
 export const MeetingRoom: React.FC = () => {
   const {
@@ -33,7 +37,10 @@ export const MeetingRoom: React.FC = () => {
     transcript,
     isTtsEnabled,
     isRecording,
-    recordingDuration
+    recordingDuration,
+    isPresentationViewerOpen,
+    sharedDocument,
+    togglePresentationViewer
   } = useMeetingStore();
 
   const { currentTier, downlinkSpeed, effectiveType } = useNetworkDetection(bandwidthTier);
@@ -177,7 +184,6 @@ export const MeetingRoom: React.FC = () => {
     }
 
     return () => {
-      // Just stop, don't destroy to allow configuration reuse
       shouldListenRef.current = false;
       try {
         recognitionRef.current?.stop();
@@ -199,27 +205,24 @@ export const MeetingRoom: React.FC = () => {
     const audioTracks = localStream.getAudioTracks();
     if (audioTracks.length === 0) return;
 
-    // Create a new stream with only the audio track to record
     const audioStream = new MediaStream(audioTracks);
     
     let mediaRecorder: MediaRecorder | null = null;
     let chunkInterval: any = null;
 
     try {
-      // Preferred formats: audio/webm (highly compatible), fallback to whatever browser supports
       const options = { mimeType: 'audio/webm' };
       if (!MediaRecorder.isTypeSupported('audio/webm')) {
         options.mimeType = 'audio/ogg';
       }
       if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-        options.mimeType = ''; // Let browser decide
+        options.mimeType = '';
       }
 
       mediaRecorder = new MediaRecorder(audioStream, options.mimeType ? options : undefined);
       
       mediaRecorder.ondataavailable = async (event) => {
         if (event.data && event.data.size > 0) {
-          // Temporarily show waveform/speaking activity when audio data is captured
           setParticipants(
             useMeetingStore.getState().participants.map((p) => 
               p.id === 'local-user' ? { ...p, isSpeaking: true } : p
@@ -247,7 +250,7 @@ export const MeetingRoom: React.FC = () => {
                 const base64Audio = base64data.split(',')[1];
                 sendAudioChunkFn(base64Audio, event.data.type || 'audio/webm', transcriptLanguage);
               };
-              return; // Successfully handed off to server!
+              return;
             } catch (err) {
               console.warn('[Whisper Client] Failed to send chunk to server, falling back to direct HF API:', err);
             }
@@ -267,7 +270,6 @@ export const MeetingRoom: React.FC = () => {
 
             const result = await response.json();
             
-            // Check if model is loading (HF cold start)
             if (response.status === 503 && result.error && result.error.includes('loading')) {
               console.log(`[HF Whisper] Model is loading...`);
               return;
@@ -285,17 +287,13 @@ export const MeetingRoom: React.FC = () => {
               if (!isHallucination) {
                 console.log(`[HF Whisper Client] Transcribed: "${transcribedText}"`);
                 
-                // Add to local transcript & captions
                 addTranscriptEntry(transcribedText, `${userName} (You)`, userRole);
                 setCaptions(`${userName} (You): "${transcribedText}"`);
 
-                // Broadcast text directly to peers in room
                 const sendChat = useMeetingStore.getState().sendChatMessageFn;
                 if (sendChat) {
                   sendChat(transcribedText);
                 }
-              } else {
-                console.log(`[HF Whisper Client] Ignored silence hallucination: "${transcribedText}"`);
               }
             }
           } catch (err: any) {
@@ -308,14 +306,12 @@ export const MeetingRoom: React.FC = () => {
 
       mediaRecorder.start();
 
-      // Record in 8-second slices to prevent free API rate limits and get better sentence context
       chunkInterval = setInterval(() => {
         if (mediaRecorder && mediaRecorder.state === 'recording') {
-          // Request data and restart recording to get clean boundaries
           mediaRecorder.stop();
           mediaRecorder.start();
         }
-      }, 8000);
+      }, 7000);
 
     } catch (err) {
       console.error('Failed to initialize MediaRecorder for Whisper:', err);
@@ -328,9 +324,7 @@ export const MeetingRoom: React.FC = () => {
       if (mediaRecorder && mediaRecorder.state !== 'inactive') {
         try {
           mediaRecorder.stop();
-        } catch (e) {
-          // ignore
-        }
+        } catch (e) {}
       }
     };
   }, [transcriptionService, localStream, isMuted, bandwidthTier, sendAudioChunkFn, transcriptLanguage, setParticipants]);
@@ -342,7 +336,6 @@ export const MeetingRoom: React.FC = () => {
     if (!isTtsEnabled || transcript.length === 0) return;
     const lastEntry = transcript[transcript.length - 1];
     
-    // Avoid announcing system logs or re-announcing same entry
     if (lastEntry.sender === 'System') return;
     if (lastSpokenEntryIdRef.current === lastEntry.id) return;
     
@@ -353,11 +346,9 @@ export const MeetingRoom: React.FC = () => {
     
     const utterance = new SpeechSynthesisUtterance(speechText);
     
-    // Automatically set language to Tamil if Tamil characters are present
     const isTamilText = /[\u0b80-\u0bff]/.test(lastEntry.text);
     utterance.lang = isTamilText ? 'ta-IN' : 'en-US';
     
-    // Cancel any ongoing speaking to avoid accumulation delay
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
   }, [transcript, isTtsEnabled]);
@@ -380,31 +371,21 @@ export const MeetingRoom: React.FC = () => {
   const audioContextRef = useRef<AudioContext | null>(null);
   const recIntervalRef = useRef<any>(null);
 
-  // Recorder Logic
   const startRecording = async (type: 'video' | 'audio') => {
     try {
       let captureStream: MediaStream;
 
       if (type === 'video') {
-        // Prompt for screen share with system audio
         captureStream = await navigator.mediaDevices.getDisplayMedia({
-          video: {
-            displaySurface: "browser",
-          },
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-          }
+          video: { displaySurface: "browser" },
+          audio: { echoCancellation: true, noiseSuppression: true }
         });
       } else {
-        // Audio capture: Chrome requires video channel in displayMedia to fetch system audio tab sharing
         try {
           const tempStream = await navigator.mediaDevices.getDisplayMedia({
             video: true,
             audio: true
           });
-          
-          // Drop video tracks, keep only system audio track
           const audioTracks = tempStream.getAudioTracks();
           if (audioTracks.length === 0) {
             tempStream.getTracks().forEach(t => t.stop());
@@ -423,7 +404,6 @@ export const MeetingRoom: React.FC = () => {
         }
       }
 
-      // Mix screen/system audio with user microphone audio using Web Audio API
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       const audioCtx = new AudioCtx();
       audioContextRef.current = audioCtx;
@@ -431,14 +411,12 @@ export const MeetingRoom: React.FC = () => {
       const mixedDest = audioCtx.createMediaStreamDestination();
       let hasAudioSource = false;
 
-      // 1. Add screen capture/system audio
       if (captureStream.getAudioTracks().length > 0) {
         const systemNode = audioCtx.createMediaStreamSource(captureStream);
         systemNode.connect(mixedDest);
         hasAudioSource = true;
       }
 
-      // 2. Add local microphone audio track
       const micTracks = localStream ? localStream.getAudioTracks() : [];
       if (micTracks.length > 0 && !isMuted) {
         const clonedMicStream = new MediaStream([micTracks[0].clone()]);
@@ -447,7 +425,6 @@ export const MeetingRoom: React.FC = () => {
         hasAudioSource = true;
       }
 
-      // Compose final recording media tracks list
       const recordingTracks: MediaStreamTrack[] = [];
       
       if (type === 'video' && captureStream.getVideoTracks().length > 0) {
@@ -465,14 +442,12 @@ export const MeetingRoom: React.FC = () => {
       const finalRecordStream = new MediaStream(recordingTracks);
       recordingStreamRef.current = finalRecordStream;
 
-      // Setup browser MediaRecorder
       const mimeOptions = { mimeType: type === 'video' ? 'video/webm;codecs=vp8,opus' : 'audio/webm;codecs=opus' };
       let recorder: MediaRecorder;
       
       try {
         recorder = new MediaRecorder(finalRecordStream, mimeOptions);
       } catch (e) {
-        console.warn("Selected mimeType is not supported. Reverting to browser default codec options.", e);
         recorder = new MediaRecorder(finalRecordStream);
       }
 
@@ -484,14 +459,12 @@ export const MeetingRoom: React.FC = () => {
       };
 
       recorder.onstop = () => {
-        // Clean up capture streams and audio contexts
         captureStream.getTracks().forEach(t => t.stop());
         finalRecordStream.getTracks().forEach(t => t.stop());
         if (audioCtx.state !== 'closed') {
           audioCtx.close();
         }
 
-        // Create file payload download link
         if (recordChunks.length > 0) {
           const fileBlob = new Blob(recordChunks, { type: type === 'video' ? 'video/webm' : 'audio/webm' });
           const fileUrl = URL.createObjectURL(fileBlob);
@@ -509,11 +482,9 @@ export const MeetingRoom: React.FC = () => {
           addToast("Failed to compile recording: No stream chunks captured.", "error");
         }
 
-        // Reset recording store states
         useMeetingStore.setState({ isRecording: false, recordingType: null, recordingDuration: 0 });
       };
 
-      // Handle external termination event (e.g. user clicks native Chrome stop sharing button)
       if (captureStream.getVideoTracks().length > 0) {
         captureStream.getVideoTracks()[0].addEventListener('ended', () => {
           stopRecording();
@@ -552,7 +523,6 @@ export const MeetingRoom: React.FC = () => {
     }
   };
 
-  // Register recording callbacks in store
   useEffect(() => {
     useMeetingStore.setState({
       startRecordingFn: startRecording,
@@ -587,6 +557,9 @@ export const MeetingRoom: React.FC = () => {
       {/* Toast popup center */}
       <ToastNotification />
 
+      {/* Floating Animated Zoom Emoji Reactions */}
+      <EmojiReactionsOverlay />
+
       {/* Floating Network Simulator Dashboard */}
       <BandwidthSimulator 
         downlinkSpeed={downlinkSpeed} 
@@ -596,9 +569,9 @@ export const MeetingRoom: React.FC = () => {
       />
 
       {/* Top Header bar */}
-      <header className="px-4 py-3 sm:px-6 sm:py-4 border-b border-purple-100 flex items-center justify-between bg-white/70 backdrop-blur-md relative z-20 no-print shadow-sm">
+      <header className="px-4 py-3 sm:px-6 sm:py-3.5 border-b border-purple-100 flex items-center justify-between bg-white/75 backdrop-blur-md relative z-20 no-print shadow-sm">
         {/* Left Side: Room Info & Invite Copy Link */}
-        <div className="flex items-center gap-2 sm:gap-4">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           <div>
             <div className="flex items-center gap-1.5 sm:gap-2">
               <h2 className="text-xs sm:text-sm font-bold text-slate-800">Room: {roomId}</h2>
@@ -610,12 +583,28 @@ export const MeetingRoom: React.FC = () => {
                 {copied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
               </button>
             </div>
-            <p className="text-[10px] text-slate-500 hidden md:block">Rural Education Portal • Call State: <span className="font-semibold text-blue-600 uppercase">{connectionState}</span></p>
+            <p className="text-[10px] text-slate-500 hidden md:block">AI Education Portal • Supabase Synced • Call: <span className="font-semibold text-blue-600 uppercase">{connectionState}</span></p>
           </div>
           <div className="px-2 py-0.5 sm:px-2.5 sm:py-1 bg-slate-100 rounded-lg border border-slate-200 text-[10px] sm:text-xs font-mono text-slate-700 flex items-center gap-1">
             <Clock className="w-3 h-3 text-blue-600" />
             <span>{formatTime(meetingDuration)}</span>
           </div>
+
+          {/* Active Presentation Quick Badge */}
+          {sharedDocument && (
+            <button
+              onClick={() => togglePresentationViewer()}
+              className={`px-2.5 py-1 rounded-lg border text-[10px] sm:text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm ${
+                isPresentationViewerOpen 
+                  ? 'bg-blue-600 border-blue-700 text-white' 
+                  : 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100'
+              }`}
+            >
+              <Presentation className="w-3.5 h-3.5" />
+              <span className="truncate max-w-[120px] sm:max-w-[180px]">{sharedDocument.fileName}</span>
+            </button>
+          )}
+
           {isRecording && (
             <div className="px-2 py-0.5 sm:px-2.5 sm:py-1 bg-rose-50 border border-rose-200 text-rose-700 text-[10px] sm:text-xs font-mono font-bold rounded-lg flex items-center gap-1.5 shadow-sm animate-pulse">
               <span className="w-2 h-2 rounded-full bg-rose-600 animate-ping" style={{ animationDuration: '1.2s' }} />
@@ -666,12 +655,23 @@ export const MeetingRoom: React.FC = () => {
         </div>
       </header>
 
+      {/* Smart Meeting Tools AI Studio Modal */}
+      <SmartMeetingTools />
+
       {/* Main Layout Area */}
-      <main className={`flex-grow flex relative transition-all duration-300 ${isTranscriptOpen ? 'lg:pr-96' : 'pr-0'}`}>
+      <main className={`flex-grow flex flex-col relative transition-all duration-300 ${isTranscriptOpen ? 'lg:pr-96' : 'pr-0'}`}>
+        {/* Real-time Data Usage, Smart Saver, and Catch-up Banner */}
+        <DataSaverBanner />
+
         {/* Video conference grids & Captions */}
-        <div className="flex-grow flex flex-col justify-between py-3 md:py-6 relative z-10 gap-3 md:gap-6">
-          {/* Active grid of real/simulated participant boxes */}
-          <MeetingGrid localStream={localStream} remoteStreams={remoteStreams} />
+        <div className="flex-grow flex flex-col justify-between py-2 md:py-3 px-2 sm:px-4 relative z-10 gap-3">
+          {/* Side-by-Side Presentation Slide Viewer & Meeting Grid */}
+          <div className={`w-full flex-grow flex flex-col ${isPresentationViewerOpen ? 'lg:flex-row gap-4 items-stretch justify-center' : 'items-center justify-center'}`}>
+            {isPresentationViewerOpen && (
+              <PresentationViewer />
+            )}
+            <MeetingGrid localStream={localStream} remoteStreams={remoteStreams} />
+          </div>
 
           {/* YouTube styled caption overlay */}
           <LiveCaptions />

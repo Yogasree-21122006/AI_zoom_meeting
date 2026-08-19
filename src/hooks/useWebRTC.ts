@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMeetingStore } from '../store/useMeetingStore';
+import type { SharedDocument } from '../types';
 
 interface Peer {
   id: string;
@@ -34,6 +35,8 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
 
   // Helper to sync participants to the Zustand store
   useEffect(() => {
+    const existingParts = useMeetingStore.getState().participants;
+
     const localUser = {
       id: 'local-user',
       name: `${userName} (You)`,
@@ -41,18 +44,24 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
       role: userRole,
       isSpeaking: false,
       isCameraOn: isCameraOn && bandwidthTier === 'high',
-      isMuted: isMuted || bandwidthTier === 'low'
+      isMuted: isMuted || bandwidthTier === 'low',
+      isHandRaised: useMeetingStore.getState().isHandRaised
     };
 
-    const remoteUsers = peers.map(p => ({
-      id: p.id,
-      name: p.name,
-      avatarColor: p.role === 'teacher' ? 'bg-indigo-600' : 'bg-blue-500',
-      role: p.role,
-      isSpeaking: false,
-      isCameraOn: true, // Default to true for remote user camera state in grid
-      isMuted: false
-    }));
+    const remoteUsers = peers.map(p => {
+      const prev = existingParts.find(ep => ep.id === p.id);
+      return {
+        id: p.id,
+        name: p.name,
+        avatarColor: p.role === 'teacher' ? 'bg-indigo-600' : 'bg-blue-500',
+        role: p.role,
+        isSpeaking: prev ? prev.isSpeaking : false,
+        isCameraOn: prev ? prev.isCameraOn : true,
+        isMuted: prev ? prev.isMuted : false,
+        isHandRaised: prev ? prev.isHandRaised : false,
+        lastReaction: prev ? prev.lastReaction : undefined
+      };
+    });
 
     setParticipants([localUser, ...remoteUsers]);
   }, [peers, isMuted, isCameraOn, bandwidthTier, userName, userRole, setParticipants]);
@@ -138,7 +147,7 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
           console.log('[WebRTC] Connected to signaling server');
           setConnectionState('connected');
           
-          // Register message sending function globally in store
+          // Register message sending functions globally in store
           useMeetingStore.setState({
             sendChatMessageFn: (text: string) => {
               if (ws && ws.readyState === WebSocket.OPEN) {
@@ -159,6 +168,34 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
                   language
                 }));
               }
+            },
+            sendReactionFn: (emoji: string, isHandRaise?: boolean, isHandLower?: boolean) => {
+              if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                  type: 'reaction',
+                  emoji,
+                  sender: userName,
+                  isHandRaise,
+                  isHandLower
+                }));
+              }
+            },
+            sendDocumentShareFn: (doc: SharedDocument) => {
+              if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                  type: 'document-share',
+                  doc
+                }));
+              }
+            },
+            sendDocumentPageSyncFn: (page: number, docId: string) => {
+              if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                  type: 'document-page-sync',
+                  page,
+                  docId
+                }));
+              }
             }
           });
           
@@ -177,11 +214,8 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
 
           switch (data.type) {
             case 'all-users': {
-              // We are joining the room and need to initiate call to all existing peers
               const currentPeers: Peer[] = data.users;
               setPeers(currentPeers);
-
-              // Store our own signaling ID
               useMeetingStore.setState({ mySignalingId: data.yourId || '' });
 
               for (const peer of currentPeers) {
@@ -191,20 +225,18 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
             }
 
             case 'user-joined': {
-              // A new peer joined. Add them to list
               const newUser: Peer = data.user;
               console.log(`[WebRTC] Peer joined: ${newUser.name} (${newUser.id})`);
               setPeers(prev => {
                 if (prev.find(p => p.id === newUser.id)) return prev;
                 return [...prev, newUser];
               });
+              useMeetingStore.getState().addToast(`${newUser.name} joined the meeting`, 'info');
               break;
             }
 
             case 'offer': {
-              // Received offer from peer. We should create a connection and answer.
               const { sender, sdp } = data;
-              console.log(`[WebRTC] Offer received from ${sender}`);
               const pc = await createPeerConnection(sender, ws, false);
               await pc.setRemoteDescription(new RTCSessionDescription(sdp));
               
@@ -220,9 +252,7 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
             }
 
             case 'answer': {
-              // Received answer from peer we initiated to. Set description.
               const { sender, sdp } = data;
-              console.log(`[WebRTC] Answer received from ${sender}`);
               const pc = peerConnections.current[sender];
               if (pc) {
                 await pc.setRemoteDescription(new RTCSessionDescription(sdp));
@@ -231,7 +261,6 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
             }
 
             case 'ice-candidate': {
-              // Received ice candidate. Add candidate to connection.
               const { sender, candidate } = data;
               const pc = peerConnections.current[sender];
               if (pc) {
@@ -241,9 +270,11 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
             }
 
             case 'user-left': {
-              // Peer left the room
               const { userId } = data;
-              console.log(`[WebRTC] Peer left: ${userId}`);
+              const leavingUser = peers.find(p => p.id === userId);
+              if (leavingUser) {
+                useMeetingStore.getState().addToast(`${leavingUser.name} left the meeting`, 'info');
+              }
               closePeerConnection(userId);
               setPeers(prev => prev.filter(p => p.id !== userId));
               break;
@@ -252,7 +283,6 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
             case 'chat-message': {
               const { text, sender, role } = data;
               addTranscriptEntry(text, sender, role);
-              // Update local captions overlay to display what the remote peer said
               useMeetingStore.setState({ captions: `${sender}: "${text}"` });
               break;
             }
@@ -270,11 +300,69 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
               break;
             }
 
+            case 'reaction': {
+              const { emoji, sender, userId, isHandRaise, isHandLower } = data;
+              const myId = useMeetingStore.getState().mySignalingId;
+              const isMe = userId === myId;
+              
+              if (!isMe) {
+                if (isHandRaise) {
+                  useMeetingStore.getState().setParticipantHandRaise(userId, true);
+                  useMeetingStore.getState().addReaction({
+                    id: `react-${Date.now()}-${Math.random()}`,
+                    emoji: '✋',
+                    sender,
+                    userId,
+                    isHandRaise: true,
+                    timestamp: Date.now()
+                  });
+                  useMeetingStore.getState().addToast(`${sender} raised their hand ✋`, 'info');
+                } else if (isHandLower) {
+                  useMeetingStore.getState().setParticipantHandRaise(userId, false);
+                } else {
+                  useMeetingStore.getState().addReaction({
+                    id: `react-${Date.now()}-${Math.random()}`,
+                    emoji,
+                    sender,
+                    userId,
+                    timestamp: Date.now()
+                  });
+                  useMeetingStore.getState().setParticipantReaction(userId, emoji);
+                }
+              }
+              break;
+            }
+
+            case 'document-share': {
+              const { doc, sender } = data;
+              if (doc) {
+                useMeetingStore.getState().setSharedDocument(doc);
+                useMeetingStore.getState().addToast(
+                  `👨‍🏫 ${sender} shared presentation: "${doc.fileName}"`,
+                  'document',
+                  {
+                    label: 'Open Presentation',
+                    onClick: () => useMeetingStore.getState().togglePresentationViewer(true)
+                  }
+                );
+              }
+              break;
+            }
+
+            case 'document-page-sync': {
+              const { page } = data;
+              const isFollowing = useMeetingStore.getState().isFollowingTeacher;
+              if (isFollowing && typeof page === 'number') {
+                useMeetingStore.getState().setDocumentCurrentPage(page, false);
+              }
+              break;
+            }
+
             case 'transcription-error': {
               const { error } = data;
               console.error('[Whisper] Server transcription error:', error);
               useMeetingStore.getState().addToast(
-                `Whisper Error: ${error}. Switching back to browser Web Speech API.`,
+                `Whisper Error: ${error}. Falling back to browser Web Speech API.`,
                 'error'
               );
               useMeetingStore.getState().setTranscriptionService('webspeech');
@@ -303,19 +391,15 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
     };
 
     const createPeerConnection = async (peerId: string, ws: WebSocket, isInitiator: boolean) => {
-      console.log(`[WebRTC] Creating RTCPeerConnection for ${peerId}, initiator: ${isInitiator}`);
-      
       const pc = new RTCPeerConnection(rtcConfig);
       peerConnections.current[peerId] = pc;
 
-      // Add local media tracks to connection
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach((track) => {
           pc.addTrack(track, localStreamRef.current!);
         });
       }
 
-      // Handle ICE Candidates and send to peer
       pc.onicecandidate = (event) => {
         if (event.candidate && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({
@@ -326,9 +410,7 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
         }
       };
 
-      // Receive remote tracks and map them to remote stream state
       pc.ontrack = (event) => {
-        console.log(`[WebRTC] Received remote track from ${peerId}:`, event.track.kind);
         const remoteStream = event.streams[0] || new MediaStream();
         setRemoteStreams((prev) => ({
           ...prev,
@@ -337,13 +419,11 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
       };
 
       pc.onconnectionstatechange = () => {
-        console.log(`[WebRTC] Peer connection state with ${peerId}: ${pc.connectionState}`);
         if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
           closePeerConnection(peerId);
         }
       };
 
-      // If we are initiating, create offer and send to peer
       if (isInitiator) {
         try {
           const offer = await pc.createOffer();
@@ -366,25 +446,24 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
     return () => {
       isMounted = false;
       
-      // Clear message sending function on unmount
       useMeetingStore.setState({ 
         sendChatMessageFn: null, 
         sendAudioChunkFn: null, 
+        sendReactionFn: null,
+        sendDocumentShareFn: null,
+        sendDocumentPageSyncFn: null,
         mySignalingId: '' 
       });
       
-      // Stop all tracks in the local stream
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach(t => t.stop());
         localStreamRef.current = null;
       }
 
-      // Close all peer connections
       Object.keys(peerConnections.current).forEach((peerId) => {
         closePeerConnection(peerId);
       });
 
-      // Close WebSocket
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
