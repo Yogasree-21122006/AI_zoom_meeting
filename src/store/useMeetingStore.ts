@@ -205,7 +205,7 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
   captions: 'Welcome to the classroom! Live captions and multi-speaker transcription active.',
   transcript: [],
   transcriptLanguage: 'ta-IN',
-  transcriptionService: 'whisper',
+  transcriptionService: 'webspeech',
   searchFilter: '',
   participants: [],
   toasts: [],
