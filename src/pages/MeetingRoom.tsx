@@ -78,12 +78,32 @@ export const MeetingRoom: React.FC = () => {
   }, [incrementDuration]);
 
   const speakingTimeoutRef = useRef<any>(null);
+  const recognitionRef = useRef<any>(null);
+  const isRecognizingRef = useRef(false);
+  const currentInterimRef = useRef('');
+  const commitTimerRef = useRef<any>(null);
 
-  // Real-time Speech Recognition for live captions and transcripts
   const shouldListen = !isMuted && bandwidthTier !== 'low' && transcriptionService === 'webspeech';
   const shouldListenRef = useRef(shouldListen);
   shouldListenRef.current = shouldListen;
-  const recognitionRef = useRef<any>(null);
+
+  // Commit text to transcript and broadcast to all peers
+  const commitSpeech = (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    
+    // Clear pending timer
+    if (commitTimerRef.current) {
+      clearTimeout(commitTimerRef.current);
+      commitTimerRef.current = null;
+    }
+    currentInterimRef.current = '';
+
+    addTranscriptEntry(trimmed, `${userName} (You)`, userRole);
+    if (useMeetingStore.getState().sendChatMessageFn) {
+      useMeetingStore.getState().sendChatMessageFn!(trimmed);
+    }
+  };
 
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -97,24 +117,29 @@ export const MeetingRoom: React.FC = () => {
       rec.continuous = true;
       rec.interimResults = true;
 
+      rec.onstart = () => {
+        isRecognizingRef.current = true;
+      };
+
       rec.onresult = (event: any) => {
         let interimTranscript = '';
         let finalTranscript = '';
 
         for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const trans = event.results[i][0]?.transcript || '';
           if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript;
+            finalTranscript += trans;
           } else {
-            interimTranscript += event.results[i][0].transcript;
+            interimTranscript += trans;
           }
         }
 
         const activeText = (finalTranscript || interimTranscript).trim();
         if (activeText) {
-          // Set local captions overlay text
+          // Set live captions
           setCaptions(`${userName} (You): "${activeText}"`);
 
-          // Set local user as speaking to animate waveform
+          // Animate waveform
           const currentParts = useMeetingStore.getState().participants;
           setParticipants(
             currentParts.map((p) => 
@@ -132,66 +157,86 @@ export const MeetingRoom: React.FC = () => {
                 p.id === 'local-user' ? { ...p, isSpeaking: false } : p
               )
             );
-          }, 2500);
+          }, 2000);
 
-          // If it's a final sentence, commit immediately
+          // 1. If final sentence received, commit immediately
           if (finalTranscript.trim()) {
-            addTranscriptEntry(finalTranscript.trim(), `${userName} (You)`, userRole);
-            if (useMeetingStore.getState().sendChatMessageFn) {
-              useMeetingStore.getState().sendChatMessageFn!(finalTranscript.trim());
-            }
+            commitSpeech(finalTranscript.trim());
+          } else if (interimTranscript.trim()) {
+            // 2. If interim text, store in ref and set 1.2s pause auto-commit timer
+            currentInterimRef.current = interimTranscript.trim();
+            if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
+            commitTimerRef.current = setTimeout(() => {
+              if (currentInterimRef.current) {
+                commitSpeech(currentInterimRef.current);
+              }
+            }, 1400);
           }
         }
       };
 
       rec.onerror = (event: any) => {
-        // Ignore normal no-speech timeouts, just restart
         if (event.error !== 'no-speech') {
           console.warn("Speech recognition warning:", event.error);
         }
       };
 
       rec.onend = () => {
-        // Auto restart with 200ms delay if mic is still active
+        isRecognizingRef.current = false;
+        // If there was any pending uncommitted speech when session ended, commit it now
+        if (currentInterimRef.current) {
+          commitSpeech(currentInterimRef.current);
+        }
+
+        // Auto restart immediately if mic is still active
         if (shouldListenRef.current) {
           setTimeout(() => {
-            try {
-              recognitionRef.current?.start();
-            } catch (err) {
-              // ignore if already running
+            if (shouldListenRef.current && !isRecognizingRef.current) {
+              try {
+                recognitionRef.current?.start();
+              } catch (err) {
+                // ignore
+              }
             }
-          }, 200);
+          }, 150);
         }
       };
 
       recognitionRef.current = rec;
     }
 
-    // Dynamically update the language setting
+    // Set recognition language
     recognitionRef.current.lang = transcriptLanguage === 'tanglish' ? 'ta-IN' : transcriptLanguage;
 
     if (shouldListen) {
       shouldListenRef.current = true;
-      try {
-        recognitionRef.current.start();
-      } catch (err) {
-        // ignore if already running
+      if (!isRecognizingRef.current) {
+        try {
+          recognitionRef.current.start();
+        } catch (err) {
+          // ignore if already active
+        }
       }
     } else {
       shouldListenRef.current = false;
-      try {
-        recognitionRef.current.stop();
-      } catch (err) {
-        // ignore
+      if (isRecognizingRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (err) {
+          // ignore
+        }
       }
     }
 
     return () => {
       shouldListenRef.current = false;
-      try {
-        recognitionRef.current?.stop();
-      } catch (err) {
-        // ignore
+      if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
+      if (isRecognizingRef.current) {
+        try {
+          recognitionRef.current?.stop();
+        } catch (err) {
+          // ignore
+        }
       }
       if (speakingTimeoutRef.current) {
         clearTimeout(speakingTimeoutRef.current);
