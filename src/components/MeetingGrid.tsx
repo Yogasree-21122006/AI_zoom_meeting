@@ -14,9 +14,31 @@ const VideoTile: React.FC<{ stream: MediaStream | null; isLocal: boolean; classN
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    if (videoRef.current && stream) {
-      videoRef.current.srcObject = stream;
-    }
+    const video = videoRef.current;
+    if (!video || !stream) return;
+
+    // Attach stream to video element
+    video.srcObject = stream;
+
+    // When new tracks are added to the stream (e.g. video track arrives
+    // after audio), reassign srcObject so the browser picks them up
+    const handleTrackAdded = () => {
+      if (video.srcObject !== stream) {
+        video.srcObject = stream;
+      }
+      video.play().catch(() => {});
+    };
+
+    stream.addEventListener('addtrack', handleTrackAdded);
+    stream.addEventListener('removetrack', handleTrackAdded);
+
+    // Ensure playback starts
+    video.play().catch(() => {});
+
+    return () => {
+      stream.removeEventListener('addtrack', handleTrackAdded);
+      stream.removeEventListener('removetrack', handleTrackAdded);
+    };
   }, [stream]);
 
   return (
@@ -29,6 +51,7 @@ const VideoTile: React.FC<{ stream: MediaStream | null; isLocal: boolean; classN
     />
   );
 };
+
 
 export const MeetingGrid: React.FC<MeetingGridProps> = ({ localStream, remoteStreams }) => {
   const { 

@@ -25,12 +25,36 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
   const wsRef = useRef<WebSocket | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const peerConnections = useRef<Record<string, RTCPeerConnection>>({});
+  // Persistent per-peer MediaStream map: we keep one stream per peer
+  // and add tracks into it instead of replacing, so the video element
+  // doesn't lose the stream reference when new tracks arrive.
+  const remoteStreamMap = useRef<Record<string, MediaStream>>({});
   
-  // Public STUN server configuration
+  // ICE server config: multiple STUN servers + free TURN fallbacks
+  // Free TURN from Open Relay Project (https://www.metered.ca/tools/openrelay/)
   const rtcConfig: RTCConfiguration = {
     iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' }
-    ]
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun.relay.metered.ca:80' },
+      {
+        urls: 'turn:global.relay.metered.ca:80',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      },
+      {
+        urls: 'turn:global.relay.metered.ca:443',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      },
+      {
+        urls: 'turn:global.relay.metered.ca:443?transport=tcp',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      }
+    ],
+    iceCandidatePoolSize: 10
   };
 
   // Helper to sync participants to the Zustand store
@@ -95,6 +119,11 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
     if (peerConnections.current[peerId]) {
       peerConnections.current[peerId].close();
       delete peerConnections.current[peerId];
+    }
+    // Also remove from persistent stream map
+    if (remoteStreamMap.current[peerId]) {
+      remoteStreamMap.current[peerId].getTracks().forEach(t => t.stop());
+      delete remoteStreamMap.current[peerId];
     }
     setRemoteStreams(prev => {
       const copy = { ...prev };
@@ -420,11 +449,51 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
       };
 
       pc.ontrack = (event) => {
-        const remoteStream = event.streams[0] || new MediaStream();
+        const track = event.track;
+
+        // Get or create a persistent MediaStream for this peer
+        if (!remoteStreamMap.current[peerId]) {
+          remoteStreamMap.current[peerId] = new MediaStream();
+        }
+        const peerStream = remoteStreamMap.current[peerId];
+
+        // Only add the track if it's not already in the stream
+        const existing = peerStream.getTracks().find(t => t.id === track.id);
+        if (!existing) {
+          peerStream.addTrack(track);
+        }
+
+        // Update the remote streams state so VideoTile re-renders
         setRemoteStreams((prev) => ({
           ...prev,
-          [peerId]: remoteStream,
+          [peerId]: peerStream,
         }));
+
+        // Sync the participant's camera/mic state based on actual track state
+        const updateParticipantTrackState = () => {
+          const tracks = peerStream.getTracks();
+          const videoTrack = tracks.find(t => t.kind === 'video');
+          const audioTrack = tracks.find(t => t.kind === 'audio');
+          useMeetingStore.setState((state) => ({
+            participants: state.participants.map((p) =>
+              p.id === peerId
+                ? {
+                    ...p,
+                    isCameraOn: videoTrack ? (!videoTrack.muted && videoTrack.enabled) : false,
+                    isMuted: audioTrack ? (audioTrack.muted || !audioTrack.enabled) : true
+                  }
+                : p
+            )
+          }));
+        };
+
+        // Listen to track mute/unmute events for live camera toggle updates
+        track.onmute = () => updateParticipantTrackState();
+        track.onunmute = () => updateParticipantTrackState();
+        track.onended = () => updateParticipantTrackState();
+
+        // Initial state sync
+        updateParticipantTrackState();
       };
 
       pc.onconnectionstatechange = () => {
