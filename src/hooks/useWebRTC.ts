@@ -31,13 +31,17 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
   const remoteStreamMap = useRef<Record<string, MediaStream>>({});
   
   // ICE server config: multiple STUN servers + free TURN fallbacks
-  // Free TURN from Open Relay Project (https://www.metered.ca/tools/openrelay/)
+  // Using multiple TURN providers for maximum reliability across firewalls
   const rtcConfig: RTCConfiguration = {
     iceServers: [
+      // Google STUN servers
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
       { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      // Metered STUN
       { urls: 'stun:stun.relay.metered.ca:80' },
+      // Open Relay TURN (TCP 443 — works even behind strict firewalls)
       {
         urls: 'turn:global.relay.metered.ca:80',
         username: 'openrelayproject',
@@ -49,12 +53,26 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
         credential: 'openrelayproject'
       },
       {
-        urls: 'turn:global.relay.metered.ca:443?transport=tcp',
+        urls: 'turns:global.relay.metered.ca:443',
         username: 'openrelayproject',
         credential: 'openrelayproject'
+      },
+      // Numb TURN (very reliable public server)
+      {
+        urls: 'turn:numb.viagenie.ca',
+        credential: 'muazkh',
+        username: 'webrtc@live.com'
+      },
+      // Freestun TURN
+      {
+        urls: 'turn:freestun.net:3478',
+        credential: 'free',
+        username: 'free'
       }
     ],
-    iceCandidatePoolSize: 10
+    iceCandidatePoolSize: 10,
+    bundlePolicy: 'max-bundle',
+    rtcpMuxPolicy: 'require'
   };
 
   // Helper to sync participants to the Zustand store
@@ -429,13 +447,24 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
     };
 
     const createPeerConnection = async (peerId: string, ws: WebSocket, isInitiator: boolean) => {
+      // Guard: if a connection already exists for this peer, reuse it
+      // (prevents duplicate connections from race conditions in all-users + user-joined)
+      if (peerConnections.current[peerId]) {
+        console.log(`[WebRTC] Reusing existing connection for peer: ${peerId}`);
+        return peerConnections.current[peerId];
+      }
+
+      console.log(`[WebRTC] Creating peer connection for ${peerId}, initiator=${isInitiator}`);
       const pc = new RTCPeerConnection(rtcConfig);
       peerConnections.current[peerId] = pc;
 
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach((track) => {
+          console.log(`[WebRTC] Adding local ${track.kind} track to peer ${peerId}`);
           pc.addTrack(track, localStreamRef.current!);
         });
+      } else {
+        console.warn(`[WebRTC] No local stream when creating peer connection for ${peerId}`);
       }
 
       pc.onicecandidate = (event) => {
@@ -445,6 +474,22 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
             candidate: event.candidate,
             target: peerId
           }));
+        } else if (!event.candidate) {
+          console.log(`[WebRTC] ICE gathering complete for peer ${peerId}`);
+        }
+      };
+
+      // Log ICE connection state changes for debugging
+      pc.oniceconnectionstatechange = () => {
+        console.log(`[WebRTC] ICE state for ${peerId}: ${pc.iceConnectionState}`);
+        if (pc.iceConnectionState === 'failed') {
+          console.warn(`[WebRTC] ICE failed for ${peerId} — trying ICE restart`);
+          if (isInitiator) {
+            pc.restartIce();
+          }
+        }
+        if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+          console.log(`[WebRTC] ✅ ICE connected for peer ${peerId}`);
         }
       };
 
