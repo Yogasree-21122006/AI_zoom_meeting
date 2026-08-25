@@ -15,7 +15,7 @@ import type {
   SmartRejoinInfo,
   MeetingHealthMetrics
 } from '../types';
-import { saveTranscriptToSupabase, fetchTranscriptsFromSupabase, saveDocumentToSupabase, endMeetingSession } from '../lib/supabase';
+import { saveTranscriptToSupabase, fetchTranscriptsFromSupabase, saveDocumentToSupabase } from '../lib/supabase';
 
 interface Toast {
   id: string;
@@ -435,12 +435,12 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
   },
 
   leaveMeeting: () => {
-    const sessionId = get().sessionId;
-    if (sessionId) {
-      // Mark this session as inactive in Supabase when the host/user leaves
-      endMeetingSession(sessionId).catch(console.warn);
-    }
-    set({ status: 'ended', sessionId: '', sessionPassword: '' });
+    // NOTE: We intentionally do NOT call endMeetingSession here.
+    // Sessions stay active (is_active = true) in Supabase permanently,
+    // so the host and students can rejoin anytime using the same
+    // room code + password. A new session/password is only created
+    // when the host clicks "Host Class" again.
+    set({ status: 'ended' });
   },
 
   toggleMute: () => {
