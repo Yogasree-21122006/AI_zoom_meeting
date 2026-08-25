@@ -178,7 +178,7 @@ interface MeetingState {
 
   // Presentation / PPT Viewer Actions
   shareDocument: (doc: SharedDocument) => Promise<void>;
-  switchActiveDocument: (doc: SharedDocument) => void;
+  switchActiveDocument: (doc: SharedDocument, broadcast?: boolean) => void;
   setSharedDocument: (doc: SharedDocument | null) => void;
   setDocumentCurrentPage: (page: number, broadcast?: boolean) => void;
   togglePresentationViewer: (open?: boolean) => void;
@@ -1047,28 +1047,65 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
     }
   },
 
-  // Switch the active document to a previously queued one (presenter only)
-  switchActiveDocument: (doc) => {
+  // Switch the active document to a previously queued one locally (broadcast is false by default so other users' screens are not disturbed)
+  switchActiveDocument: (doc, broadcast = false) => {
     const currentDoc = get().sharedDocument;
     set((state) => {
-      // Remove selected doc from queue, push current back in
+      // Remove selected doc from queue, push current doc back into queue if different
       const filteredQueue = state.documentQueue.filter(d => d.id !== doc.id);
-      const newQueue = currentDoc
+      const newQueue = (currentDoc && currentDoc.id !== doc.id)
         ? [...filteredQueue, currentDoc]
         : filteredQueue;
-      return { sharedDocument: doc, documentQueue: newQueue };
+      return { 
+        sharedDocument: doc, 
+        documentQueue: newQueue,
+        isPresentationViewerOpen: true
+      };
     });
-    // Broadcast the switch to all participants
-    const fn = get().sendDocumentShareFn;
-    if (fn) fn(doc);
+    // Broadcast ONLY if explicitly requested
+    if (broadcast) {
+      const fn = get().sendDocumentShareFn;
+      if (fn) fn(doc);
+    }
   },
 
   setSharedDocument: (doc) => {
-    set({
-      sharedDocument: doc,
-      isPresentationViewerOpen: !!doc
+    if (!doc) {
+      set({ sharedDocument: null, isPresentationViewerOpen: false });
+      return;
+    }
+    const currentDoc = get().sharedDocument;
+    set((state) => {
+      // If same doc, just update
+      if (currentDoc && currentDoc.id === doc.id) {
+        return { sharedDocument: doc, isPresentationViewerOpen: true };
+      }
+      
+      // If user had no doc open yet, open it
+      if (!currentDoc) {
+        return { sharedDocument: doc, isPresentationViewerOpen: true };
+      }
+
+      // If user has a doc open already:
+      // If Following Teacher mode is on, switch to new doc and save current in queue
+      if (state.isFollowingTeacher) {
+        const filteredQueue = state.documentQueue.filter(d => d.id !== doc.id && d.id !== currentDoc.id);
+        return {
+          sharedDocument: doc,
+          documentQueue: [...filteredQueue, currentDoc],
+          isPresentationViewerOpen: true
+        };
+      } else {
+        // If in Free Scroll / manual viewing mode, add incoming doc to queue without disrupting current screen
+        const alreadyInQueue = state.documentQueue.some(d => d.id === doc.id);
+        return {
+          documentQueue: alreadyInQueue ? state.documentQueue : [...state.documentQueue, doc],
+          isPresentationViewerOpen: true
+        };
+      }
     });
   },
+
 
 
   setDocumentCurrentPage: (page, broadcast) => {

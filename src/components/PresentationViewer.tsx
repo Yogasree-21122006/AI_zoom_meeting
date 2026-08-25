@@ -190,7 +190,6 @@ export const PresentationViewer: React.FC = () => {
     documentQueue,
     isPresentationViewerOpen, 
     togglePresentationViewer,
-    userName,
     userRole,
     setDocumentCurrentPage,
     isFollowingTeacher,
@@ -204,11 +203,6 @@ export const PresentationViewer: React.FC = () => {
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [showUploadModal, setShowUploadModal] = useState<boolean>(false);
   const [showQueuePanel, setShowQueuePanel] = useState(false);
-
-  // Only the person who originally uploaded sees the Change Slide / upload button
-  const isUploader = !!sharedDocument && sharedDocument.uploadedBy === userName;
-  // Non-uploaders (students or other teachers) can request re-sync
-  const canResync = !!sharedDocument && !isUploader;
 
   if (!isPresentationViewerOpen || !sharedDocument) {
     return (
@@ -291,66 +285,82 @@ export const PresentationViewer: React.FC = () => {
               </button>
             )}
 
-            {/* Replace/Upload New — ONLY visible to the original uploader */}
-            {isUploader && (
-              <button
-                onClick={() => setShowUploadModal(true)}
-                className="px-2.5 py-1 bg-white hover:bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-bold rounded-lg transition-colors flex items-center gap-1 shadow-sm"
-              >
-                <Upload className="w-3 h-3" />
-                <span>Change Slide</span>
-              </button>
-            )}
+            {/* Change Slide / Upload button — NOW AVAILABLE FOR EVERYONE */}
+            <button
+              onClick={() => setShowUploadModal(true)}
+              className="px-2.5 py-1 bg-white hover:bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-bold rounded-lg transition-colors flex items-center gap-1 shadow-sm"
+              title="Upload and share a new presentation or slide deck"
+            >
+              <Upload className="w-3 h-3" />
+              <span>Change Slide</span>
+            </button>
 
-            {/* Queue of other uploaded PDFs — only for uploader to switch */}
-            {isUploader && documentQueue.length > 0 && (
+            {/* Queue of other uploaded PDFs — NOW AVAILABLE FOR EVERYONE */}
+            {documentQueue.length > 0 && (
               <div className="relative">
                 <button
                   onClick={() => setShowQueuePanel(v => !v)}
                   className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-300 text-[10px] font-bold rounded-lg transition-colors flex items-center gap-1 shadow-sm"
+                  title="View other uploaded PDFs and presentations locally"
                 >
                   <FileText className="w-3 h-3" />
                   <span>Other PDFs ({documentQueue.length})</span>
                 </button>
                 {showQueuePanel && (
-                  <div className="absolute top-8 right-0 z-50 bg-white border border-purple-200 rounded-xl shadow-xl p-2 min-w-[220px] space-y-1">
-                    <p className="text-[9px] font-bold text-slate-400 uppercase px-1 pb-1">Queued Presentations</p>
-                    {documentQueue.map(doc => (
-                      <button
-                        key={doc.id}
-                        onClick={() => { switchActiveDocument(doc); setShowQueuePanel(false); }}
-                        className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-blue-50 transition-colors text-left"
-                      >
-                        <FileText className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
-                        <div className="min-w-0">
-                          <p className="text-[10px] font-bold text-slate-700 truncate">{doc.fileName}</p>
-                          <p className="text-[9px] text-slate-400">by {doc.uploadedBy} · {doc.totalPages}p</p>
+                  <div className="absolute top-8 right-0 z-50 bg-white border border-purple-200 rounded-xl shadow-2xl p-2.5 min-w-[260px] space-y-1.5 backdrop-blur-md animate-fadeIn">
+                    <div className="flex items-center justify-between px-1 pb-1 border-b border-slate-100">
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Available PDFs</p>
+                      <span className="text-[9px] text-slate-400">Click to view locally</span>
+                    </div>
+                    <div className="max-h-56 overflow-y-auto space-y-1">
+                      {documentQueue.map(doc => (
+                        <div
+                          key={doc.id}
+                          className="flex items-center justify-between gap-2 p-2 rounded-lg hover:bg-purple-50 transition-colors border border-transparent hover:border-purple-200"
+                        >
+                          <button
+                            onClick={() => { switchActiveDocument(doc, false); setShowQueuePanel(false); }}
+                            className="flex items-center gap-2 min-w-0 text-left flex-grow"
+                            title="View this slide deck on your screen only"
+                          >
+                            <FileText className="w-4 h-4 text-purple-600 flex-shrink-0" />
+                            <div className="min-w-0">
+                              <p className="text-[11px] font-bold text-slate-800 truncate">{doc.fileName}</p>
+                              <p className="text-[9px] text-slate-400">by {doc.uploadedBy} · {doc.totalPages} {doc.totalPages === 1 ? 'page' : 'pages'}</p>
+                            </div>
+                          </button>
+                          {/* Present Live to all button */}
+                          <button
+                            onClick={() => { switchActiveDocument(doc, true); setShowQueuePanel(false); }}
+                            className="p-1 px-1.5 rounded bg-blue-50 hover:bg-blue-100 text-blue-600 text-[9px] font-bold flex items-center gap-1 flex-shrink-0"
+                            title="Broadcast this presentation to everyone"
+                          >
+                            <Radio className="w-2.5 h-2.5" />
+                            <span>Live</span>
+                          </button>
                         </div>
-                      </button>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
             )}
 
-            {/* Re-sync button — for non-uploaders to request teacher to re-push current slide */}
-            {canResync && (
-              <button
-                onClick={() => {
-                  // Re-broadcast current doc to all by calling sendDocumentShareFn
-                  if (sendDocumentShareFn && sharedDocument) {
-                    sendDocumentShareFn(sharedDocument);
-                  }
-                  // Also snap to latest page if following teacher
-                  if (!isFollowingTeacher) toggleFollowTeacher();
-                }}
-                className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-300 text-[10px] font-bold rounded-lg transition-colors flex items-center gap-1 shadow-sm"
-                title="Force re-sync to teacher's current slide"
-              >
-                <Radio className="w-3 h-3" />
-                <span>Re-sync</span>
-              </button>
-            )}
+            {/* Re-sync button */}
+            <button
+              onClick={() => {
+                if (sendDocumentShareFn && sharedDocument) {
+                  sendDocumentShareFn(sharedDocument);
+                }
+                if (!isFollowingTeacher) toggleFollowTeacher();
+              }}
+              className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-300 text-[10px] font-bold rounded-lg transition-colors flex items-center gap-1 shadow-sm"
+              title="Force re-sync to teacher's current slide"
+            >
+              <Radio className="w-3 h-3" />
+              <span>Re-sync</span>
+            </button>
+
 
             {/* View Mode & Close toggles */}
             <div className="flex items-center gap-1">
