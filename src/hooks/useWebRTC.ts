@@ -469,32 +469,68 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
           [peerId]: peerStream,
         }));
 
-        // Sync the participant's camera/mic state based on actual track state
-        const updateParticipantTrackState = () => {
-          const tracks = peerStream.getTracks();
-          const videoTrack = tracks.find(t => t.kind === 'video');
-          const audioTrack = tracks.find(t => t.kind === 'audio');
+        // ─── Camera state management ──────────────────────────────────
+        // IMPORTANT: When we receive a video track via ontrack, the track
+        // starts as track.muted=true while ICE is still being set up.
+        // Checking track.muted here would incorrectly show "Camera Off".
+        // Instead: receiving a video track means camera IS on.
+        // We only update to OFF when the track actually goes muted/ended.
+        if (track.kind === 'video') {
+          // Camera is ON – they sent us their video track
           useMeetingStore.setState((state) => ({
             participants: state.participants.map((p) =>
-              p.id === peerId
-                ? {
-                    ...p,
-                    isCameraOn: videoTrack ? (!videoTrack.muted && videoTrack.enabled) : false,
-                    isMuted: audioTrack ? (audioTrack.muted || !audioTrack.enabled) : true
-                  }
-                : p
+              p.id === peerId ? { ...p, isCameraOn: true } : p
             )
           }));
-        };
 
-        // Listen to track mute/unmute events for live camera toggle updates
-        track.onmute = () => updateParticipantTrackState();
-        track.onunmute = () => updateParticipantTrackState();
-        track.onended = () => updateParticipantTrackState();
+          // Camera turned OFF (user toggled camera off on their side)
+          track.onmute = () => {
+            useMeetingStore.setState((state) => ({
+              participants: state.participants.map((p) =>
+                p.id === peerId ? { ...p, isCameraOn: false } : p
+              )
+            }));
+          };
 
-        // Initial state sync
-        updateParticipantTrackState();
+          // Camera turned back ON
+          track.onunmute = () => {
+            useMeetingStore.setState((state) => ({
+              participants: state.participants.map((p) =>
+                p.id === peerId ? { ...p, isCameraOn: true } : p
+              )
+            }));
+          };
+
+          // Camera stream ended (participant left or camera unplugged)
+          track.onended = () => {
+            useMeetingStore.setState((state) => ({
+              participants: state.participants.map((p) =>
+                p.id === peerId ? { ...p, isCameraOn: false } : p
+              )
+            }));
+          };
+        }
+
+        // ─── Mic/Mute state management ────────────────────────────────
+        if (track.kind === 'audio') {
+          track.onmute = () => {
+            useMeetingStore.setState((state) => ({
+              participants: state.participants.map((p) =>
+                p.id === peerId ? { ...p, isMuted: true } : p
+              )
+            }));
+          };
+
+          track.onunmute = () => {
+            useMeetingStore.setState((state) => ({
+              participants: state.participants.map((p) =>
+                p.id === peerId ? { ...p, isMuted: false } : p
+              )
+            }));
+          };
+        }
       };
+
 
       pc.onconnectionstatechange = () => {
         if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
