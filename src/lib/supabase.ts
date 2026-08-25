@@ -178,3 +178,119 @@ export async function fetchDocumentsFromSupabase(roomId: string) {
     return [];
   }
 }
+
+// =====================================================================
+// 7. Meeting Session Management (Collision-Proof Room Isolation)
+// Each hosted session gets a unique session_id + password.
+// Same room_id can exist multiple times but with different session_ids.
+// =====================================================================
+
+export interface SupabaseSessionRecord {
+  id?: string;
+  room_id: string;
+  session_id: string;
+  password: string;
+  created_by: string;
+  is_active?: boolean;
+  created_at?: string;
+}
+
+/** Generates a short memorable password like "SPARK-4291" */
+function generateSessionPassword(): string {
+  const words = [
+    'SPARK', 'NOVA', 'BLOOM', 'SOLAR', 'CREST',
+    'DELTA', 'ECHO', 'FROST', 'GLOW', 'HALO',
+    'IRIS', 'JADE', 'KITE', 'LAMP', 'MINT',
+    'OAK', 'PINE', 'REEF', 'SAGE', 'TIDE'
+  ];
+  const word = words[Math.floor(Math.random() * words.length)];
+  const num = Math.floor(1000 + Math.random() * 9000); // 4-digit number
+  return `${word}-${num}`;
+}
+
+/**
+ * HOST ACTION: Create a new meeting session.
+ * Generates a unique session_id (UUID) and a short memorable password.
+ * Returns { session_id, password } on success, or null on error.
+ */
+export async function createMeetingSession(
+  roomId: string,
+  hostName: string
+): Promise<{ session_id: string; password: string } | null> {
+  try {
+    const password = generateSessionPassword();
+
+    const { data, error } = await supabase
+      .from('meeting_sessions')
+      .insert([
+        {
+          room_id: roomId,
+          password,
+          created_by: hostName,
+          is_active: true
+        }
+      ])
+      .select('session_id, password')
+      .single();
+
+    if (error || !data) {
+      console.warn('[Supabase] Create session error:', error?.message);
+      return null;
+    }
+
+    return { session_id: data.session_id, password: data.password };
+  } catch (err: any) {
+    console.warn('[Supabase] createMeetingSession caught error:', err.message);
+    return null;
+  }
+}
+
+/**
+ * JOINER ACTION: Validate room_id + password and retrieve the session_id.
+ * Returns the session_id string on success, or null if not found / wrong password.
+ */
+export async function joinMeetingSession(
+  roomId: string,
+  password: string
+): Promise<string | null> {
+  try {
+    const { data, error } = await supabase
+      .from('meeting_sessions')
+      .select('session_id')
+      .eq('room_id', roomId)
+      .eq('password', password.trim().toUpperCase())
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error || !data) {
+      console.warn('[Supabase] Join session: no matching session found.');
+      return null;
+    }
+
+    return data.session_id;
+  } catch (err: any) {
+    console.warn('[Supabase] joinMeetingSession caught error:', err.message);
+    return null;
+  }
+}
+
+/**
+ * HOST/LEAVE ACTION: Mark a session as inactive when the meeting ends.
+ */
+export async function endMeetingSession(sessionId: string): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('meeting_sessions')
+      .update({ is_active: false })
+      .eq('session_id', sessionId);
+
+    if (error) {
+      console.warn('[Supabase] End session error:', error.message);
+    }
+  } catch (err: any) {
+    console.warn('[Supabase] endMeetingSession caught error:', err.message);
+  }
+}
+

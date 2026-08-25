@@ -15,7 +15,7 @@ import type {
   SmartRejoinInfo,
   MeetingHealthMetrics
 } from '../types';
-import { saveTranscriptToSupabase, fetchTranscriptsFromSupabase, saveDocumentToSupabase } from '../lib/supabase';
+import { saveTranscriptToSupabase, fetchTranscriptsFromSupabase, saveDocumentToSupabase, endMeetingSession } from '../lib/supabase';
 
 interface Toast {
   id: string;
@@ -46,6 +46,8 @@ interface MeetingState {
   // Meeting details
   status: 'landing' | 'active' | 'ended';
   roomId: string;
+  sessionId: string;    // Unique UUID per hosted meeting (used for WebRTC signaling — collision-proof)
+  sessionPassword: string; // Auto-generated password shown to host (e.g. "SPARK-4291")
   userName: string;
   userRole: 'teacher' | 'student';
   meetingDuration: number; // in seconds
@@ -128,7 +130,7 @@ interface MeetingState {
   setTranscriptionService: (service: 'webspeech' | 'whisper') => void;
   setSearchFilter: (filter: string) => void;
   setMeetingStatus: (status: 'landing' | 'active' | 'ended') => void;
-  joinMeeting: (userName: string, roomId: string, role: 'teacher' | 'student', startTier: BandwidthTier) => void;
+  joinMeeting: (userName: string, roomId: string, role: 'teacher' | 'student', startTier: BandwidthTier, sessionId?: string, sessionPassword?: string) => void;
   leaveMeeting: () => void;
   toggleMute: () => void;
   toggleCamera: () => void;
@@ -195,6 +197,8 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
   manualTier: 'high',
   status: 'landing',
   roomId: '',
+  sessionId: '',
+  sessionPassword: '',
   userName: '',
   userRole: 'student',
   meetingDuration: 0,
@@ -354,7 +358,7 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
   setSearchFilter: (filter) => set({ searchFilter: filter }),
   setMeetingStatus: (status) => set({ status }),
 
-  joinMeeting: (userName, roomId, role, startTier) => {
+  joinMeeting: (userName, roomId, role, startTier, sessionId, sessionPassword) => {
     const localUser: Participant = {
       id: 'local-user',
       name: `${userName} (You)`,
@@ -365,9 +369,15 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
       isMuted: false
     };
 
+    // Use sessionId as the real WebRTC room identifier if provided.
+    // This ensures same room_id but different sessions stay isolated.
+    const effectiveRoomId = sessionId || roomId;
+
     set({
       userName,
       roomId,
+      sessionId: sessionId || '',
+      sessionPassword: sessionPassword || '',
       userRole: role,
       status: 'active',
       bandwidthTier: startTier,
@@ -384,7 +394,14 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
     });
 
     get().addToast(`Joined classroom: Room ${roomId}`, 'info');
+    // Load transcript history keyed by the unique sessionId (not roomId)
+    // so each session's transcript stays isolated
     get().loadSupabaseHistory();
+
+    // Expose effectiveRoomId for WebRTC hook to use
+    if (typeof window !== 'undefined') {
+      (window as any).__smartmeet_session_room = effectiveRoomId;
+    }
   },
 
   loadSupabaseHistory: async () => {
@@ -418,7 +435,12 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
   },
 
   leaveMeeting: () => {
-    set({ status: 'ended' });
+    const sessionId = get().sessionId;
+    if (sessionId) {
+      // Mark this session as inactive in Supabase when the host/user leaves
+      endMeetingSession(sessionId).catch(console.warn);
+    }
+    set({ status: 'ended', sessionId: '', sessionPassword: '' });
   },
 
   toggleMute: () => {

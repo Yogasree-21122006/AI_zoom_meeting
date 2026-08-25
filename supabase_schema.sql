@@ -73,3 +73,33 @@ ON public.meeting_documents FOR UPDATE USING (true);
 CREATE INDEX IF NOT EXISTS idx_transcripts_room_id ON public.meeting_transcripts(room_id);
 CREATE INDEX IF NOT EXISTS idx_summaries_room_id ON public.meeting_summaries(room_id);
 CREATE INDEX IF NOT EXISTS idx_documents_room_id ON public.meeting_documents(room_id);
+
+-- 5. Create table for unique meeting sessions (collision-proof room isolation)
+-- Each time a host creates a meeting, a unique session_id + password is generated.
+-- Even if multiple groups use the same room_id (e.g. "101"), each gets a different
+-- session_id (used for WebRTC signaling) and password, so they stay fully isolated.
+CREATE TABLE IF NOT EXISTS public.meeting_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    room_id TEXT NOT NULL,
+    session_id UUID NOT NULL DEFAULT gen_random_uuid(),
+    password TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE public.meeting_sessions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public select on meeting_sessions"
+ON public.meeting_sessions FOR SELECT USING (true);
+
+CREATE POLICY "Allow public insert on meeting_sessions"
+ON public.meeting_sessions FOR INSERT WITH CHECK (true);
+
+CREATE POLICY "Allow public update on meeting_sessions"
+ON public.meeting_sessions FOR UPDATE USING (true);
+
+-- Indexes for fast password+room lookups
+CREATE INDEX IF NOT EXISTS idx_sessions_room_id ON public.meeting_sessions(room_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_room_password ON public.meeting_sessions(room_id, password);
+CREATE INDEX IF NOT EXISTS idx_sessions_session_id ON public.meeting_sessions(session_id);

@@ -199,14 +199,23 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
             }
           });
           
-          // Send join message to join the specific room
+          // Send join message with the unique session room identifier.
+          // This is the session_id UUID (not the user-friendly room_id),
+          // so even if 2 groups share the same room name "101", they get
+          // routed to separate WebRTC rooms on the signaling server.
+          const signalingRoom =
+            (typeof window !== 'undefined' && (window as any).__smartmeet_session_room)
+              ? (window as any).__smartmeet_session_room
+              : roomId;
+
           ws.send(JSON.stringify({
             type: 'join',
-            roomId,
+            roomId: signalingRoom,
             name: userName,
             role: userRole
           }));
         };
+
 
         ws.onmessage = async (event) => {
           if (!isMounted) return;
