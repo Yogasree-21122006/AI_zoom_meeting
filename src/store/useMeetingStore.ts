@@ -76,6 +76,7 @@ interface MeetingState {
 
   // Faculty PPT / PDF Document Sharing & In-Meeting Viewer
   sharedDocument: SharedDocument | null;
+  documentQueue: SharedDocument[];  // Queue of previously shared docs (presenter can switch between them)
   isPresentationViewerOpen: boolean;
   presentationViewMode: 'split' | 'fullscreen' | 'pip';
   isFollowingTeacher: boolean;
@@ -177,6 +178,7 @@ interface MeetingState {
 
   // Presentation / PPT Viewer Actions
   shareDocument: (doc: SharedDocument) => Promise<void>;
+  switchActiveDocument: (doc: SharedDocument) => void;
   setSharedDocument: (doc: SharedDocument | null) => void;
   setDocumentCurrentPage: (page: number, broadcast?: boolean) => void;
   togglePresentationViewer: (open?: boolean) => void;
@@ -215,6 +217,7 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
   toasts: [],
   activeReactions: [],
   sharedDocument: null,
+  documentQueue: [],
   isPresentationViewerOpen: false,
   presentationViewMode: 'split',
   isFollowingTeacher: true,
@@ -1006,9 +1009,19 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
   },
 
   shareDocument: async (doc) => {
-    set({
-      sharedDocument: doc,
-      isPresentationViewerOpen: true
+    // If there's already an active document from a DIFFERENT uploader, push it to queue
+    // so it's still accessible. Same uploader replacing = just swap directly.
+    const currentDoc = get().sharedDocument;
+    set((state) => {
+      const alreadyQueued = state.documentQueue.find(d => d.id === currentDoc?.id);
+      const newQueue = (currentDoc && !alreadyQueued)
+        ? [...state.documentQueue, currentDoc]
+        : state.documentQueue;
+      return {
+        sharedDocument: doc,
+        documentQueue: newQueue,
+        isPresentationViewerOpen: true
+      };
     });
 
     const fn = get().sendDocumentShareFn;
@@ -1034,12 +1047,29 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
     }
   },
 
+  // Switch the active document to a previously queued one (presenter only)
+  switchActiveDocument: (doc) => {
+    const currentDoc = get().sharedDocument;
+    set((state) => {
+      // Remove selected doc from queue, push current back in
+      const filteredQueue = state.documentQueue.filter(d => d.id !== doc.id);
+      const newQueue = currentDoc
+        ? [...filteredQueue, currentDoc]
+        : filteredQueue;
+      return { sharedDocument: doc, documentQueue: newQueue };
+    });
+    // Broadcast the switch to all participants
+    const fn = get().sendDocumentShareFn;
+    if (fn) fn(doc);
+  },
+
   setSharedDocument: (doc) => {
     set({
       sharedDocument: doc,
       isPresentationViewerOpen: !!doc
     });
   },
+
 
   setDocumentCurrentPage: (page, broadcast) => {
     const doc = get().sharedDocument;

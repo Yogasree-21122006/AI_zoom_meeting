@@ -540,7 +540,10 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
 
       if (isInitiator) {
         try {
-          const offer = await pc.createOffer();
+          const offer = await pc.createOffer({
+            offerToReceiveAudio: true,
+            offerToReceiveVideo: true
+          });
           await pc.setLocalDescription(offer);
           ws.send(JSON.stringify({
             type: 'offer',
