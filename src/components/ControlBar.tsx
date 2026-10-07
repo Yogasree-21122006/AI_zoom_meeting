@@ -142,13 +142,14 @@ export const ControlBar: React.FC = () => {
             <select
               value={transcriptLanguage}
               disabled={isMicDisabled}
-              onChange={(e) => setTranscriptLanguage(e.target.value as 'ta-IN' | 'en-US' | 'tanglish')}
+              onChange={(e) => setTranscriptLanguage(e.target.value as any)}
               className="w-full bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl px-2 py-2 md:px-2.5 md:py-2.5 hover:bg-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-ellipsis overflow-hidden"
               title="Microphone Transcription Language"
             >
-              <option value="ta-IN">Tamil (தமிழ்)</option>
-              <option value="en-US">English (US)</option>
-              <option value="tanglish">Tanglish (Tamil in English)</option>
+              <option value="en-IN">🇮🇳 English (India)</option>
+              <option value="tanglish">🇮🇳 Tanglish (Tamil + English)</option>
+              <option value="ta-IN">🇮🇳 Tamil (தமிழ்)</option>
+              <option value="en-US">🇺🇸 English (US)</option>
             </select>
           </div>
 

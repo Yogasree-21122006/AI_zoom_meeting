@@ -68,7 +68,7 @@ interface MeetingState {
   // Live transcripts and captions
   captions: string;
   transcript: TranscriptEntry[];
-  transcriptLanguage: 'ta-IN' | 'en-US' | 'tanglish';
+  transcriptLanguage: 'en-IN' | 'ta-IN' | 'tanglish' | 'en-US';
   transcriptionService: 'webspeech' | 'whisper';
   searchFilter: string;
   
@@ -219,7 +219,7 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
   isHandRaised: false,
   captions: 'Welcome to the classroom! Live captions and multi-speaker transcription active.',
   transcript: [],
-  transcriptLanguage: 'ta-IN',
+  transcriptLanguage: 'en-IN',
   transcriptionService: 'webspeech',
   searchFilter: '',
   participants: [],
@@ -518,11 +518,45 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
       momentTag: detectedTag
     };
 
-    // Sequential Non-Overlapping Buffer: append cleanly in chronological order
-    set((state) => ({
-      transcript: [...state.transcript, newEntry],
-      captions: `${sender}: "${cleanText}"`
-    }));
+    // Sequential Non-Overlapping Buffer: append cleanly or merge with recent partial
+    set((state) => {
+      const prev = state.transcript[state.transcript.length - 1];
+      if (prev && prev.sender === sender && nowMs - (prev.rawTimestamp || 0) < 4000) {
+        const prevLower = prev.text.toLowerCase().trim();
+        const currLower = cleanText.toLowerCase().trim();
+
+        // Exact duplicate within 4s -> ignore
+        if (prevLower === currLower) {
+          return { captions: `${sender}: "${cleanText}"` };
+        }
+
+        // Expansion of same sentence (e.g., interim was "hello", final is "hello everyone")
+        if (currLower.startsWith(prevLower) && currLower.length > prevLower.length) {
+          const updated = [...state.transcript];
+          updated[updated.length - 1] = {
+            ...prev,
+            text: cleanText,
+            timestamp: timestampStr,
+            rawTimestamp: nowMs,
+            momentTag: detectedTag || prev.momentTag
+          };
+          return {
+            transcript: updated,
+            captions: `${sender}: "${cleanText}"`
+          };
+        }
+
+        // Substring / delayed partial of earlier completed sentence -> ignore
+        if (prevLower.startsWith(currLower)) {
+          return { captions: `${sender}: "${prev.text}"` };
+        }
+      }
+
+      return {
+        transcript: [...state.transcript, newEntry],
+        captions: `${sender}: "${cleanText}"`
+      };
+    });
 
     // Auto-populate Decisions, Questions, Action Items
     if (detectedTag === 'question') {

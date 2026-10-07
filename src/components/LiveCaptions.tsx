@@ -1,6 +1,5 @@
 import React from 'react';
 import { useMeetingStore } from '../store/useMeetingStore';
-import { motion, AnimatePresence } from 'framer-motion';
 import { ClosedCaption } from 'lucide-react';
 
 export const LiveCaptions: React.FC = () => {
@@ -25,22 +24,15 @@ export const LiveCaptions: React.FC = () => {
 
         {/* Caption scrolling area */}
         <div className="flex-grow overflow-hidden min-h-[44px] flex items-center">
-          <AnimatePresence mode="wait">
-            <motion.p
-              key={captions}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              transition={{ duration: 0.2 }}
-              className={`leading-relaxed w-full font-medium ${
-                isLowBandwidth
-                  ? 'text-yellow-300 text-lg sm:text-xl font-bold font-mono tracking-wide'
-                  : 'text-slate-100 text-sm sm:text-base'
-              }`}
-            >
-              {captions || "Waiting for audio/captions..."}
-            </motion.p>
-          </AnimatePresence>
+          <p
+            className={`leading-relaxed w-full font-medium transition-colors duration-150 ${
+              isLowBandwidth
+                ? 'text-yellow-300 text-lg sm:text-xl font-bold font-mono tracking-wide'
+                : 'text-slate-100 text-sm sm:text-base'
+            }`}
+          >
+            {captions || "Waiting for audio/captions..."}
+          </p>
         </div>
       </div>
     </div>

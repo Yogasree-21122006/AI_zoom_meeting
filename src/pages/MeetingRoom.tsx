@@ -82,6 +82,7 @@ export const MeetingRoom: React.FC = () => {
   const isRecognizingRef = useRef(false);
   const currentInterimRef = useRef('');
   const commitTimerRef = useRef<any>(null);
+  const lastCommittedRef = useRef<{ text: string; time: number }>({ text: '', time: 0 });
 
   const shouldListen = !isMuted && bandwidthTier !== 'low' && transcriptionService === 'webspeech';
   const shouldListenRef = useRef(shouldListen);
@@ -98,6 +99,16 @@ export const MeetingRoom: React.FC = () => {
       commitTimerRef.current = null;
     }
     currentInterimRef.current = '';
+
+    // Prevent immediate rapid duplicates within 1.8s
+    const now = Date.now();
+    if (
+      lastCommittedRef.current.text.toLowerCase() === trimmed.toLowerCase() &&
+      now - lastCommittedRef.current.time < 1800
+    ) {
+      return;
+    }
+    lastCommittedRef.current = { text: trimmed, time: now };
 
     setCaptions(`${userName} (You): "${trimmed}"`);
     addTranscriptEntry(trimmed, `${userName} (You)`, userRole);
@@ -137,7 +148,7 @@ export const MeetingRoom: React.FC = () => {
 
         const activeText = (finalTranscript || interimTranscript).trim();
         if (activeText) {
-          // Set live captions
+          // Instant 0ms subtitle update on every spoken syllable
           setCaptions(`${userName} (You): "${activeText}"`);
 
           // Animate waveform
@@ -158,20 +169,20 @@ export const MeetingRoom: React.FC = () => {
                 p.id === 'local-user' ? { ...p, isSpeaking: false } : p
               )
             );
-          }, 2000);
+          }, 1500);
 
-          // 1. If final sentence received, commit immediately
+          // Fast commit: if final arrived commit immediately; if interim, commit after short 400ms pause
           if (finalTranscript.trim()) {
             commitSpeech(finalTranscript.trim());
-          } else if (interimTranscript.trim()) {
-            // 2. If interim text, store in ref and set 1.2s pause auto-commit timer
+          }
+          if (interimTranscript.trim()) {
             currentInterimRef.current = interimTranscript.trim();
             if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
             commitTimerRef.current = setTimeout(() => {
               if (currentInterimRef.current) {
                 commitSpeech(currentInterimRef.current);
               }
-            }, 1400);
+            }, 400);
           }
         }
       };
@@ -201,18 +212,41 @@ export const MeetingRoom: React.FC = () => {
               try {
                 recognitionRef.current?.start();
               } catch (err) {
-                // ignore
+                setTimeout(() => {
+                  if (shouldListenRef.current && !isRecognizingRef.current) {
+                    try { recognitionRef.current?.start(); } catch (e) {}
+                  }
+                }, 300);
               }
             }
-          }, 200);
+          }, 150);
         }
       };
 
       recognitionRef.current = rec;
     }
 
-    // Set recognition language
-    recognitionRef.current.lang = transcriptLanguage === 'tanglish' ? 'ta-IN' : transcriptLanguage;
+    // Set recognition language with Indian English & Tamil optimization
+    let targetLang = 'en-IN';
+    if (transcriptLanguage === 'en-IN' || transcriptLanguage === 'tanglish') {
+      targetLang = 'en-IN';
+    } else if (transcriptLanguage === 'ta-IN') {
+      targetLang = 'ta-IN';
+    } else {
+      targetLang = 'en-US';
+    }
+
+    if (recognitionRef.current.lang !== targetLang) {
+      recognitionRef.current.lang = targetLang;
+      // Stop so onend auto-restarts with the newly assigned acoustic model
+      if (isRecognizingRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (err) {
+          // ignore
+        }
+      }
+    }
 
     if (shouldListen) {
       shouldListenRef.current = true;
@@ -319,11 +353,13 @@ export const MeetingRoom: React.FC = () => {
               formData.append('file', event.data, ext);
               formData.append('model', 'whisper-1');
               
-              if (transcriptLanguage === 'ta-IN' || transcriptLanguage === 'tanglish') {
+              if (transcriptLanguage === 'ta-IN') {
                 formData.append('language', 'ta');
-              } else if (transcriptLanguage === 'en-US') {
+              } else {
                 formData.append('language', 'en');
               }
+              // Condition Whisper with technical vocabulary context
+              formData.append('prompt', 'Classroom meeting discussion: machine learning, artificial intelligence, computer science, questions, definitions, greetings in English and Tamil.');
 
               const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
                 method: 'POST',
@@ -338,7 +374,14 @@ export const MeetingRoom: React.FC = () => {
                 const transcribedText = (result.text || '').trim();
                 if (transcribedText) {
                   const lowerText = transcribedText.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"").trim();
-                  const isHallucination = ['hello', 'thank you', 'thank you for watching', 'you', 'bye', 'please', 'oh', 'subtitles by'].includes(lowerText);
+                  const isHallucination = [
+                    'thank you for watching',
+                    'thanks for watching',
+                    'subtitles by',
+                    'subscribe to my channel',
+                    'translated by',
+                    'amara.org'
+                  ].some(h => lowerText.includes(h));
                   
                   if (!isHallucination) {
                     console.log(`[OpenAI Whisper Direct] Transcribed: "${transcribedText}"`);
@@ -367,7 +410,7 @@ export const MeetingRoom: React.FC = () => {
           mediaRecorder.stop();
           mediaRecorder.start();
         }
-      }, 3500);
+      }, 2500);
 
     } catch (err) {
       console.error('Failed to initialize MediaRecorder for Whisper:', err);
