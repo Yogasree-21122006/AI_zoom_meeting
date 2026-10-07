@@ -520,7 +520,8 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
 
     // Sequential Non-Overlapping Buffer: append cleanly in chronological order
     set((state) => ({
-      transcript: [...state.transcript, newEntry]
+      transcript: [...state.transcript, newEntry],
+      captions: `${sender}: "${cleanText}"`
     }));
 
     // Auto-populate Decisions, Questions, Action Items

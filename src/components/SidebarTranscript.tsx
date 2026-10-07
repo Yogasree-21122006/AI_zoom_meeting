@@ -31,7 +31,11 @@ export const SidebarTranscript: React.FC = () => {
     simplifyTranscriptEntry,
     isSimplifyingId,
     toggleSmartTools,
-    setActiveSmartToolTab
+    setActiveSmartToolTab,
+    userName,
+    userRole,
+    addTranscriptEntry,
+    setCaptions
   } = useMeetingStore();
 
   const [messageText, setMessageText] = useState('');
@@ -57,8 +61,16 @@ export const SidebarTranscript: React.FC = () => {
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!messageText.trim() || !sendChatMessageFn) return;
-    sendChatMessageFn(messageText.trim());
+    const text = messageText.trim();
+    if (!text) return;
+
+    // Immediately commit locally and update live subtitle
+    addTranscriptEntry(text, `${userName} (You)`, userRole);
+    setCaptions(`${userName} (You): "${text}"`);
+
+    if (sendChatMessageFn) {
+      sendChatMessageFn(text);
+    }
     setMessageText('');
   };
 

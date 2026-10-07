@@ -341,8 +341,10 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
 
             case 'chat-message': {
               const { text, sender, role } = data;
-              addTranscriptEntry(text, sender, role);
-              useMeetingStore.setState({ captions: `${sender}: "${text}"` });
+              if (sender !== userName) {
+                addTranscriptEntry(text, sender, role);
+                useMeetingStore.setState({ captions: `${sender}: "${text}"` });
+              }
               break;
             }
 

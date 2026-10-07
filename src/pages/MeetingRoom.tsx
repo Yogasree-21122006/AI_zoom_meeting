@@ -99,6 +99,7 @@ export const MeetingRoom: React.FC = () => {
     }
     currentInterimRef.current = '';
 
+    setCaptions(`${userName} (You): "${trimmed}"`);
     addTranscriptEntry(trimmed, `${userName} (You)`, userRole);
     if (useMeetingStore.getState().sendChatMessageFn) {
       useMeetingStore.getState().sendChatMessageFn!(trimmed);
