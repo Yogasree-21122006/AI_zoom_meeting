@@ -46,6 +46,7 @@ export const ControlBar: React.FC = () => {
     isPresentationViewerOpen,
     togglePresentationViewer,
     toggleSmartTools,
+    signalingConnectionState
   } = useMeetingStore();
 
   const [showRecordMenu, setShowRecordMenu] = useState(false);
@@ -75,6 +76,24 @@ export const ControlBar: React.FC = () => {
               {bandwidthTier === 'medium' && 'Medium Bandwidth (Audio-Only)'}
               {bandwidthTier === 'low' && 'Low Bandwidth (Captions-Only)'}
             </span>
+            {signalingConnectionState === 'connected' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Live Sync
+              </span>
+            )}
+            {signalingConnectionState === 'connecting' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
+                Connecting
+              </span>
+            )}
+            {signalingConnectionState === 'disconnected' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200" title="Signaling server offline. Peers will sync when backend is started.">
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                Local Mode
+              </span>
+            )}
           </div>
 
           {/* Mobile-only toggle notes trigger */}

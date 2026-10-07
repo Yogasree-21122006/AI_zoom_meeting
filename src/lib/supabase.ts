@@ -251,8 +251,11 @@ export async function createMeetingSession(
   roomId: string,
   hostName: string
 ): Promise<{ session_id: string; password: string }> {
-  const fallbackSessionId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `session-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+  const normRoom = roomId.trim().toUpperCase();
   const password = generateSessionPassword();
+  const normPass = password.trim().toUpperCase();
+  // Deterministic fallback session ID ensures Host and Joiners always compute the identical WebRTC room ID
+  const deterministicSessionId = `session-${normRoom.toLowerCase()}-${normPass.toLowerCase()}`;
 
   try {
     const { data, error } = await supabase
@@ -270,17 +273,17 @@ export async function createMeetingSession(
 
     if (error || !data) {
       console.warn('[Supabase] Cloud create session error, switching to resilient fallback:', error?.message);
-      saveLocalFallbackSession(roomId, fallbackSessionId, password);
-      return { session_id: fallbackSessionId, password };
+      saveLocalFallbackSession(roomId, deterministicSessionId, password);
+      return { session_id: deterministicSessionId, password };
     }
 
     // Save to local fallback cache as well
-    saveLocalFallbackSession(roomId, data.session_id || fallbackSessionId, data.password || password);
-    return { session_id: data.session_id || fallbackSessionId, password: data.password || password };
+    saveLocalFallbackSession(roomId, data.session_id || deterministicSessionId, data.password || password);
+    return { session_id: data.session_id || deterministicSessionId, password: data.password || password };
   } catch (err: any) {
     console.warn('[Supabase] createMeetingSession caught error, using local fallback:', err?.message);
-    saveLocalFallbackSession(roomId, fallbackSessionId, password);
-    return { session_id: fallbackSessionId, password };
+    saveLocalFallbackSession(roomId, deterministicSessionId, password);
+    return { session_id: deterministicSessionId, password };
   }
 }
 

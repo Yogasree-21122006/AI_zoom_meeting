@@ -16,6 +16,13 @@ import type {
   MeetingHealthMetrics
 } from '../types';
 import { saveTranscriptToSupabase, fetchTranscriptsFromSupabase, saveDocumentToSupabase } from '../lib/supabase';
+import {
+  directSummarizeTranscript,
+  directGenerateQuiz,
+  directSimplifyConcept,
+  directStudyNotes,
+  directTimelineChapters
+} from '../lib/gemini';
 
 interface Toast {
   id: string;
@@ -89,6 +96,8 @@ interface MeetingState {
   recordingDuration: number;
   recordingType: 'video' | 'audio' | null;
   customGeminiKey: string;
+  signalingConnectionState: 'disconnected' | 'connecting' | 'connected';
+  setSignalingConnectionState: (state: 'disconnected' | 'connecting' | 'connected') => void;
 
   // 🚀 25 Innovative Features States:
   isSmartToolsOpen: boolean;
@@ -236,6 +245,8 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
   recordingDuration: 0,
   recordingType: null,
   customGeminiKey: typeof window !== 'undefined' ? (localStorage.getItem('gemini_api_key') || '') : '',
+  signalingConnectionState: 'disconnected',
+  setSignalingConnectionState: (state) => set({ signalingConnectionState: state }),
 
   // 🚀 25 Features Initial State
   isSmartToolsOpen: false,
@@ -630,6 +641,9 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
   // AI Meeting Summarization
   generateAiSummary: async (customApiKey) => {
     set({ isSummarizing: true });
+    const effectiveKey = customApiKey || get().customGeminiKey || import.meta.env.VITE_GEMINI_API_KEY || '';
+    const cleanTranscript = get().transcript.filter(t => t.sender !== 'System');
+
     try {
       const serverUrl = import.meta.env.VITE_SIGNALING_SERVER_URL || 'ws://localhost:3001';
       const httpBackendUrl = serverUrl.replace(/^ws/, 'http');
@@ -638,22 +652,28 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          transcript: get().transcript.filter(t => t.sender !== 'System'),
+          transcript: cleanTranscript,
           roomId: get().roomId,
-          apiKey: customApiKey || get().customGeminiKey || undefined
+          apiKey: effectiveKey
         })
       });
 
-      const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || `Server responded with status ${response.status}`);
+        throw new Error(`Server responded with status ${response.status}`);
       }
-
+      const data = await response.json();
       set({ aiSummaryData: data });
       get().addToast('English Meeting Summary generated and saved!', 'info');
-    } catch (err: any) {
-      console.error('[AI Summary error]', err);
-      get().addToast(`Summary failed: ${err.message}`, 'error');
+    } catch (backendErr: any) {
+      console.warn('[AI Summary backend unavailable, using direct Gemini engine]:', backendErr?.message);
+      try {
+        const directData = await directSummarizeTranscript(cleanTranscript, effectiveKey);
+        set({ aiSummaryData: directData });
+        get().addToast('English Meeting Summary generated via Gemini AI!', 'info');
+      } catch (err: any) {
+        console.error('[AI Summary error]', err);
+        get().addToast(`Summary failed: ${err.message}`, 'error');
+      }
     } finally {
       set({ isSummarizing: false });
     }
@@ -699,6 +719,9 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
 
   generateQuiz: async () => {
     set({ isGeneratingQuiz: true });
+    const effectiveKey = get().customGeminiKey || import.meta.env.VITE_GEMINI_API_KEY || '';
+    const cleanTranscript = get().transcript.filter(t => t.sender !== 'System');
+
     try {
       const serverUrl = import.meta.env.VITE_SIGNALING_SERVER_URL || 'ws://localhost:3001';
       const httpBackendUrl = serverUrl.replace(/^ws/, 'http');
@@ -707,18 +730,24 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          transcript: get().transcript.filter(t => t.sender !== 'System'),
-          apiKey: get().customGeminiKey || undefined
+          transcript: cleanTranscript,
+          apiKey: effectiveKey
         })
       });
 
+      if (!response.ok) throw new Error('Quiz generation failed on backend');
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Quiz generation failed');
-
       set({ quizzes: data.questions || [] });
       get().addToast('Interactive Quiz Generated from Lecture!', 'info');
-    } catch (err: any) {
-      get().addToast(`Failed to generate quiz: ${err.message}`, 'error');
+    } catch (backendErr: any) {
+      console.warn('[Quiz backend unavailable, using direct Gemini]:', backendErr?.message);
+      try {
+        const questions = await directGenerateQuiz(cleanTranscript, effectiveKey);
+        set({ quizzes: questions });
+        get().addToast('Interactive Quiz Generated via Gemini AI!', 'info');
+      } catch (err: any) {
+        get().addToast(`Failed to generate quiz: ${err.message}`, 'error');
+      }
     } finally {
       set({ isGeneratingQuiz: false });
     }
@@ -734,6 +763,9 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
 
   generateStudyNotes: async () => {
     set({ isGeneratingNotes: true });
+    const effectiveKey = get().customGeminiKey || import.meta.env.VITE_GEMINI_API_KEY || '';
+    const cleanTranscript = get().transcript.filter(t => t.sender !== 'System');
+
     try {
       const serverUrl = import.meta.env.VITE_SIGNALING_SERVER_URL || 'ws://localhost:3001';
       const httpBackendUrl = serverUrl.replace(/^ws/, 'http');
@@ -742,24 +774,33 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          transcript: get().transcript.filter(t => t.sender !== 'System'),
-          apiKey: get().customGeminiKey || undefined
+          transcript: cleanTranscript,
+          apiKey: effectiveKey
         })
       });
 
+      if (!response.ok) throw new Error('Study notes backend error');
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Study notes generation failed');
-
       set({ studyNotes: data.studyNotes });
       get().addToast('Study & Revision Notes ready!', 'info');
-    } catch (err: any) {
-      get().addToast(`Failed to create study notes: ${err.message}`, 'error');
+    } catch (backendErr: any) {
+      console.warn('[Study notes backend unavailable, using direct Gemini]:', backendErr?.message);
+      try {
+        const notes = await directStudyNotes(cleanTranscript, effectiveKey);
+        set({ studyNotes: notes as any });
+        get().addToast('Study Notes Generated via Gemini AI!', 'info');
+      } catch (err: any) {
+        get().addToast(`Failed to create study notes: ${err.message}`, 'error');
+      }
     } finally {
       set({ isGeneratingNotes: false });
     }
   },
 
   generateTopicTimeline: async () => {
+    const effectiveKey = get().customGeminiKey || import.meta.env.VITE_GEMINI_API_KEY || '';
+    const cleanTranscript = get().transcript.filter(t => t.sender !== 'System');
+
     try {
       const serverUrl = import.meta.env.VITE_SIGNALING_SERVER_URL || 'ws://localhost:3001';
       const httpBackendUrl = serverUrl.replace(/^ws/, 'http');
@@ -768,18 +809,24 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          transcript: get().transcript.filter(t => t.sender !== 'System'),
-          apiKey: get().customGeminiKey || undefined
+          transcript: cleanTranscript,
+          apiKey: effectiveKey
         })
       });
 
+      if (!response.ok) throw new Error('Timeline backend error');
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Timeline generation failed');
-
       set({ topicChapters: data.chapters || [] });
       get().addToast('Topic Timeline Categorized!', 'info');
-    } catch (err: any) {
-      get().addToast(`Timeline failed: ${err.message}`, 'error');
+    } catch (backendErr: any) {
+      console.warn('[Timeline backend unavailable, using direct Gemini]:', backendErr?.message);
+      try {
+        const chapters = await directTimelineChapters(cleanTranscript, effectiveKey);
+        set({ topicChapters: chapters as any });
+        get().addToast('Topic Timeline Generated via Gemini AI!', 'info');
+      } catch (err: any) {
+        get().addToast(`Timeline failed: ${err.message}`, 'error');
+      }
     }
   },
 
@@ -788,6 +835,8 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
     if (!entry) return;
 
     set({ isSimplifyingId: entryId });
+    const effectiveKey = get().customGeminiKey || import.meta.env.VITE_GEMINI_API_KEY || '';
+
     try {
       const serverUrl = import.meta.env.VITE_SIGNALING_SERVER_URL || 'ws://localhost:3001';
       const httpBackendUrl = serverUrl.replace(/^ws/, 'http');
@@ -798,20 +847,30 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
         body: JSON.stringify({
           text: entry.text,
           targetLang,
-          apiKey: get().customGeminiKey || undefined
+          apiKey: effectiveKey
         })
       });
 
+      if (!response.ok) throw new Error('Simplification failed');
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Simplification failed');
 
       set((state) => ({
         transcript: state.transcript.map(t =>
           t.id === entryId ? { ...t, simplifiedText: data.simplified } : t
         )
       }));
-    } catch (err: any) {
-      get().addToast(`Could not simplify: ${err.message}`, 'error');
+    } catch (backendErr: any) {
+      console.warn('[Simplify backend unavailable, using direct Gemini]:', backendErr?.message);
+      try {
+        const simplified = await directSimplifyConcept(entry.text, targetLang, effectiveKey);
+        set((state) => ({
+          transcript: state.transcript.map(t =>
+            t.id === entryId ? { ...t, simplifiedText: simplified } : t
+          )
+        }));
+      } catch (err: any) {
+        get().addToast(`Could not simplify: ${err.message}`, 'error');
+      }
     } finally {
       set({ isSimplifyingId: null });
     }

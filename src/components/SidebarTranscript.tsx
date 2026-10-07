@@ -13,6 +13,7 @@ import {
   Tag
 } from 'lucide-react';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { directAskAi } from '../lib/gemini';
 
 export const SidebarTranscript: React.FC = () => {
   const {
@@ -96,15 +97,29 @@ export const SidebarTranscript: React.FC = () => {
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }
       ]);
-    } catch (err: any) {
-      setAiAnswers(prev => [
-        ...prev,
-        {
-          question: currentQ,
-          answer: `Could not answer: ${err.message}`,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        }
-      ]);
+    } catch (backendErr: any) {
+      console.warn('[Ask AI backend unavailable, using direct Gemini]:', backendErr?.message);
+      try {
+        const effectiveKey = customGeminiKey || import.meta.env.VITE_GEMINI_API_KEY || '';
+        const answer = await directAskAi(currentQ, transcript.filter(t => t.sender !== 'System'), effectiveKey);
+        setAiAnswers(prev => [
+          ...prev,
+          {
+            question: currentQ,
+            answer: answer || 'No response generated.',
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          }
+        ]);
+      } catch (err: any) {
+        setAiAnswers(prev => [
+          ...prev,
+          {
+            question: currentQ,
+            answer: `Could not answer: ${err.message}`,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          }
+        ]);
+      }
     } finally {
       setIsAskingAi(false);
       setTimeout(() => {

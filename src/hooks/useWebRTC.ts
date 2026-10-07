@@ -247,13 +247,16 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
           });
           
           // Send join message with the unique session room identifier.
-          // This is the session_id UUID (not the user-friendly room_id),
-          // so even if 2 groups share the same room name "101", they get
-          // routed to separate WebRTC rooms on the signaling server.
-          const signalingRoom =
+          // Normalized to lowercase trimmed so all peers join the identical signaling room
+          const rawRoom =
             (typeof window !== 'undefined' && (window as any).__smartmeet_session_room)
               ? (window as any).__smartmeet_session_room
               : roomId;
+          const signalingRoom = (rawRoom || roomId).trim().toLowerCase();
+
+          console.log(`[WebRTC] Connected to signaling server for room: ${signalingRoom}`);
+          setConnectionState('connected');
+          useMeetingStore.getState().setSignalingConnectionState('connected');
 
           ws.send(JSON.stringify({
             type: 'join',
@@ -434,10 +437,13 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
           if (!isMounted) return;
           console.warn('[WebRTC] Signaling connection closed');
           setConnectionState('disconnected');
+          useMeetingStore.getState().setSignalingConnectionState('disconnected');
         };
 
         ws.onerror = (err) => {
-          console.error('[WebRTC] Signaling error:', err);
+          console.warn('[WebRTC] Signaling connection error:', err);
+          setConnectionState('disconnected');
+          useMeetingStore.getState().setSignalingConnectionState('disconnected');
         };
 
       } catch (err) {

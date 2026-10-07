@@ -18,7 +18,9 @@ const HostPasswordModal: React.FC<HostPasswordModalProps> = ({ roomId, password,
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(`Room: ${roomId}  |  Password: ${password}`);
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const fullInviteLink = `${origin}/room/${roomId}?pwd=${password}`;
+    navigator.clipboard.writeText(`Join AI Zoom Meeting:\n🔗 Direct Link: ${fullInviteLink}\nRoom: ${roomId}\nPassword: ${password}`);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -108,10 +110,18 @@ export const LandingPage: React.FC = () => {
     generatedPassword: string;
   }>({ visible: false, sessionId: '', generatedPassword: '' });
 
-  // Sync state if store gets updated from URL mount check
+  // Sync state if store gets updated from URL mount check or URL query params
   useEffect(() => {
     if (storeRoomId) {
       setRoomId(storeRoomId);
+    }
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const urlPwd = params.get('pwd');
+      if (urlPwd) {
+        setPassword(urlPwd.toUpperCase());
+        setRole('student');
+      }
     }
   }, [storeRoomId]);
 
@@ -124,7 +134,9 @@ export const LandingPage: React.FC = () => {
   const handleCopyLink = () => {
     if (!roomId) return;
     const origin = window.location.origin;
-    const inviteUrl = `${origin}/room/${roomId}`;
+    const inviteUrl = password.trim()
+      ? `${origin}/room/${roomId}?pwd=${password.trim().toUpperCase()}`
+      : `${origin}/room/${roomId}`;
     navigator.clipboard.writeText(inviteUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);

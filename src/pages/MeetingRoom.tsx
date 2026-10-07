@@ -179,6 +179,11 @@ export const MeetingRoom: React.FC = () => {
         if (event.error !== 'no-speech') {
           console.warn("Speech recognition warning:", event.error);
         }
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed' || event.error === 'audio-capture') {
+          console.log('[SpeechRecognition] Mobile restriction, auto-switching to Whisper');
+          addToast('Browser mic speech recognition restricted. Switched to Whisper AI for continuous transcription.', 'info');
+          useMeetingStore.setState({ transcriptionService: 'whisper' });
+        }
       };
 
       rec.onend = () => {
@@ -198,7 +203,7 @@ export const MeetingRoom: React.FC = () => {
                 // ignore
               }
             }
-          }, 150);
+          }, 200);
         }
       };
 
@@ -304,50 +309,52 @@ export const MeetingRoom: React.FC = () => {
             }
           }
 
-          // 2. Fallback: Call Hugging Face free Whisper API directly from browser
-          try {
-            const modelUrl = 'https://api-inference.huggingface.co/models/openai/whisper-large-v3-turbo';
-
-            const response = await fetch(modelUrl, {
-              method: 'POST',
-              headers: {
-                'Content-Type': event.data.type || 'audio/webm',
-              },
-              body: event.data
-            });
-
-            const result = await response.json();
-            
-            if (response.status === 503 && result.error && result.error.includes('loading')) {
-              console.log(`[HF Whisper] Model is loading...`);
-              return;
-            }
-
-            if (!response.ok) {
-              throw new Error(`HF HTTP ${response.status}`);
-            }
-
-            const transcribedText = (result.text || '').trim();
-            if (transcribedText) {
-              const lowerText = transcribedText.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"").trim();
-              const isHallucination = ['hello', 'thank you', 'thank you for watching', 'you', 'bye', 'please', 'oh'].includes(lowerText);
+          // 2. Direct OpenAI Whisper API (Accurate, fast, works on all mobile & desktop browsers)
+          const openaiKey = import.meta.env.VITE_OPENAI_API_KEY || (window as any).__OPENAI_KEY;
+          if (openaiKey) {
+            try {
+              const formData = new FormData();
+              const ext = (event.data.type || '').includes('ogg') ? 'audio.ogg' : 'audio.webm';
+              formData.append('file', event.data, ext);
+              formData.append('model', 'whisper-1');
               
-              if (!isHallucination) {
-                console.log(`[HF Whisper Client] Transcribed: "${transcribedText}"`);
-                
-                addTranscriptEntry(transcribedText, `${userName} (You)`, userRole);
-                setCaptions(`${userName} (You): "${transcribedText}"`);
-
-                const sendChat = useMeetingStore.getState().sendChatMessageFn;
-                if (sendChat) {
-                  sendChat(transcribedText);
-                }
+              if (transcriptLanguage === 'ta-IN' || transcriptLanguage === 'tanglish') {
+                formData.append('language', 'ta');
+              } else if (transcriptLanguage === 'en-US') {
+                formData.append('language', 'en');
               }
+
+              const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${openaiKey}`
+                },
+                body: formData
+              });
+
+              if (response.ok) {
+                const result = await response.json();
+                const transcribedText = (result.text || '').trim();
+                if (transcribedText) {
+                  const lowerText = transcribedText.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"").trim();
+                  const isHallucination = ['hello', 'thank you', 'thank you for watching', 'you', 'bye', 'please', 'oh', 'subtitles by'].includes(lowerText);
+                  
+                  if (!isHallucination) {
+                    console.log(`[OpenAI Whisper Direct] Transcribed: "${transcribedText}"`);
+                    addTranscriptEntry(transcribedText, `${userName} (You)`, userRole);
+                    setCaptions(`${userName} (You): "${transcribedText}"`);
+
+                    const sendChat = useMeetingStore.getState().sendChatMessageFn;
+                    if (sendChat) {
+                      sendChat(transcribedText);
+                    }
+                  }
+                }
+                return;
+              }
+            } catch (openAiErr) {
+              console.warn('[Direct Whisper Error]:', openAiErr);
             }
-          } catch (err: any) {
-            console.error('[HF Whisper Client Error]', err);
-            addToast(`Whisper API failed: ${err.message || err}. Reverting to Browser Web Speech API.`, 'error');
-            useMeetingStore.setState({ transcriptionService: 'webspeech' });
           }
         }
       };
@@ -359,7 +366,7 @@ export const MeetingRoom: React.FC = () => {
           mediaRecorder.stop();
           mediaRecorder.start();
         }
-      }, 7000);
+      }, 3500);
 
     } catch (err) {
       console.error('Failed to initialize MediaRecorder for Whisper:', err);
