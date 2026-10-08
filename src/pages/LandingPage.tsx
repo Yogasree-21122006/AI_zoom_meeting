@@ -4,8 +4,9 @@ import type { BandwidthTier } from '../types';
 import { createMeetingSession, joinMeetingSession } from '../lib/supabase';
 import {
   Video, BookOpen, Users, Wifi, AlertCircle,
-  Copy, Check, Lock, Key, Loader2, ShieldCheck, Eye, EyeOff
+  Copy, Check, Lock, Key, Loader2, ShieldCheck, Eye, EyeOff, FileText, Download
 } from 'lucide-react';
+import { MissedClassSummaryModal } from '../components/MissedClassSummaryModal';
 
 // ─── Host password reveal modal ──────────────────────────────────────────────
 interface HostPasswordModalProps {
@@ -109,6 +110,9 @@ export const LandingPage: React.FC = () => {
     sessionId: string;
     generatedPassword: string;
   }>({ visible: false, sessionId: '', generatedPassword: '' });
+
+  // Missed class summary modal state
+  const [isCatchUpOpen, setIsCatchUpOpen] = useState(false);
 
   // Sync state if store gets updated from URL mount check or URL query params
   useEffect(() => {
@@ -252,8 +256,19 @@ export const LandingPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 border border-blue-200 bg-blue-50 px-3 py-1 rounded-full text-xs text-blue-600 font-semibold shadow-sm">
-            <Wifi className="w-3.5 h-3.5" /> Adaptive Engine Active
+          <div className="flex items-center gap-2.5">
+            <button
+              id="missed-class-catchup-nav-btn"
+              type="button"
+              onClick={() => setIsCatchUpOpen(true)}
+              className="flex items-center gap-1.5 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-full text-xs text-indigo-700 font-bold shadow-sm transition-all hover:scale-105"
+            >
+              <FileText className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Missed Class AI Notes & PDF</span>
+            </button>
+            <div className="flex items-center gap-2 border border-blue-200 bg-blue-50 px-3 py-1.5 rounded-full text-xs text-blue-600 font-semibold shadow-sm">
+              <Wifi className="w-3.5 h-3.5" /> Adaptive Engine Active
+            </div>
           </div>
         </header>
 
@@ -476,11 +491,48 @@ export const LandingPage: React.FC = () => {
                     </button>
                   </div>
                 </form>
+
+                {/* Zero Network / Missed Class Catch-Up Button */}
+                <div className="mt-5 pt-4 border-t border-purple-100">
+                  <button
+                    id="missed-class-catchup-btn"
+                    type="button"
+                    onClick={() => setIsCatchUpOpen(true)}
+                    className="w-full py-3 px-4 bg-gradient-to-r from-purple-50 via-indigo-50 to-blue-50 hover:from-purple-100 hover:to-indigo-100 border border-indigo-200 text-indigo-950 rounded-2xl text-xs font-bold transition-all flex items-center justify-between shadow-sm group hover:shadow-md"
+                  >
+                    <div className="flex items-center gap-2.5 text-left">
+                      <div className="p-2 bg-gradient-to-tr from-blue-600 to-indigo-600 text-white rounded-xl shadow-sm group-hover:scale-105 transition-transform flex-shrink-0">
+                        <FileText className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="font-extrabold text-slate-800 flex items-center gap-1.5">
+                          <span>Missed Class Catch-Up</span>
+                          <span className="text-[9px] bg-indigo-200 text-indigo-800 px-1.5 py-0.5 rounded-full font-black">
+                            0 NET MODE
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 font-normal">
+                          Had 0 net during class? Get AI Summary & PDF Notes
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-indigo-600 font-extrabold text-sm ml-2 group-hover:translate-x-1 transition-transform">
+                      →
+                    </span>
+                  </button>
+                </div>
               </div>
             </div>
 
           </div>
         </main>
+
+        {/* Missed Class AI Summary Modal */}
+        <MissedClassSummaryModal
+          isOpen={isCatchUpOpen}
+          onClose={() => setIsCatchUpOpen(false)}
+          defaultRoomId={roomId}
+        />
 
         {/* Footer */}
         <footer className="py-6 border-t border-purple-100 text-center text-xs text-slate-500 relative z-10 max-w-7xl mx-auto w-full px-6 flex flex-col sm:flex-row items-center justify-between gap-2">
