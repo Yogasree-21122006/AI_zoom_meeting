@@ -4,7 +4,7 @@ import type { BandwidthTier } from '../types';
 import { createMeetingSession, joinMeetingSession } from '../lib/supabase';
 import {
   Video, BookOpen, Users, Wifi, AlertCircle,
-  Copy, Check, Lock, Key, Loader2, ShieldCheck, Eye, EyeOff, FileText, Download
+  Copy, Check, Lock, Key, Loader2, ShieldCheck, Eye, EyeOff, FileText
 } from 'lucide-react';
 import { MissedClassSummaryModal } from '../components/MissedClassSummaryModal';
 

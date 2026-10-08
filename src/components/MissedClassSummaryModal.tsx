@@ -251,7 +251,7 @@ export const MissedClassSummaryModal: React.FC<MissedClassSummaryModalProps> = (
       doc.setFontSize(9.5);
       doc.setTextColor(51, 65, 85);
 
-      summaryData.keyTakeaways.forEach((point, index) => {
+      summaryData.keyTakeaways.forEach((point) => {
         if (y > 270) {
           doc.addPage();
           y = 20;
@@ -266,7 +266,7 @@ export const MissedClassSummaryModal: React.FC<MissedClassSummaryModalProps> = (
 
       // 4. Decisions & Homework / Action Items
       printSectionHeader("2. TEACHER'S INSTRUCTIONS & ASSIGNMENTS");
-      summaryData.actionItems.forEach((item, index) => {
+      summaryData.actionItems.forEach((item) => {
         if (y > 270) {
           doc.addPage();
           y = 20;
