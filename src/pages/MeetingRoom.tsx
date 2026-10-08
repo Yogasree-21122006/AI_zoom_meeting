@@ -10,9 +10,12 @@ import { EmojiReactionsOverlay } from '../components/EmojiReactions';
 import { PresentationViewer } from '../components/PresentationViewer';
 import { SmartMeetingTools } from '../components/SmartMeetingTools';
 import { DataSaverBanner } from '../components/DataSaverBanner';
+import { StudentFocusMonitor } from '../components/StudentFocusMonitor';
+import { StudentFocusAlerts } from '../components/StudentFocusAlerts';
 import { useNetworkDetection } from '../hooks/useNetworkDetection';
 import { useWebRTC } from '../hooks/useWebRTC';
-import { Users, Clock, Copy, Check, Presentation } from 'lucide-react';
+import { useTabVisibilityTracker } from '../hooks/useTabVisibilityTracker';
+import { Users, Clock, Copy, Check, Presentation, ShieldAlert } from 'lucide-react';
 
 export const MeetingRoom: React.FC = () => {
   const {
@@ -40,8 +43,13 @@ export const MeetingRoom: React.FC = () => {
     recordingDuration,
     isPresentationViewerOpen,
     sharedDocument,
-    togglePresentationViewer
+    togglePresentationViewer,
+    studentFocusMap,
+    toggleFocusMonitor
   } = useMeetingStore();
+
+  // Activate Page Visibility tracking for student proctoring
+  useTabVisibilityTracker();
 
   const { currentTier, downlinkSpeed, effectiveType } = useNetworkDetection(bandwidthTier);
 
@@ -50,6 +58,9 @@ export const MeetingRoom: React.FC = () => {
 
   const [copied, setCopied] = useState(false);
   const [showMobileSimulator, setShowMobileSimulator] = useState(false);
+
+  const activeAwayCount = Object.values(studentFocusMap).filter(s => !s.isFocused).length;
+  const totalFocusViolations = Object.values(studentFocusMap).reduce((acc, curr) => acc + curr.violationCount, 0);
 
   // Synchronize detected network speed tier with Zustand state
   useEffect(() => {
@@ -741,8 +752,37 @@ export const MeetingRoom: React.FC = () => {
           )}
         </button>
 
-        {/* Right Side: Participant Count & User Initials */}
+        {/* Right Side: Participant Count & Focus Monitor (Teacher Only) & User Initials */}
         <div className="flex items-center gap-2 sm:gap-3">
+          {userRole === 'teacher' && (
+            <button
+              id="focus-monitor-btn"
+              type="button"
+              onClick={() => toggleFocusMonitor()}
+              className={`px-2.5 py-1 sm:px-3 sm:py-1 rounded-xl border text-[10px] sm:text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm ${
+                activeAwayCount > 0
+                  ? 'bg-rose-50 border-rose-300 text-rose-700 hover:bg-rose-100 shadow-rose-500/20 shadow-md animate-pulse'
+                  : 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'
+              }`}
+              title="Student Anti-Distraction & Focus Monitor (Host Only)"
+            >
+              <ShieldAlert className="w-3.5 h-3.5 text-rose-600" />
+              <span className="hidden md:inline">Focus Monitor</span>
+              <span className="md:hidden">Focus</span>
+              {activeAwayCount > 0 ? (
+                <span className="bg-rose-600 text-white text-[9px] px-1.5 py-0.2 rounded-full font-black animate-bounce">
+                  {activeAwayCount} Away
+                </span>
+              ) : (
+                totalFocusViolations > 0 && (
+                  <span className="bg-amber-500 text-white text-[9px] px-1.5 py-0.2 rounded-full font-bold">
+                    {totalFocusViolations}
+                  </span>
+                )
+              )}
+            </button>
+          )}
+
           <div className="px-2 py-0.5 sm:px-2.5 sm:py-1 bg-slate-100 rounded-lg border border-slate-200 text-[10px] sm:text-xs font-semibold text-slate-700 flex items-center gap-1">
             <Users className="w-3 h-3 text-blue-600" />
             <span>{participants.length} <span className="hidden sm:inline">Active</span></span>
@@ -753,6 +793,12 @@ export const MeetingRoom: React.FC = () => {
           </div>
         </div>
       </header>
+
+      {/* Student Focus & Proctoring Monitor (Host-Only Modal) */}
+      <StudentFocusMonitor />
+
+      {/* Student Focus Warning Alerts & Popups (Student-Only) */}
+      <StudentFocusAlerts />
 
       {/* Smart Meeting Tools AI Studio Modal */}
       <SmartMeetingTools />

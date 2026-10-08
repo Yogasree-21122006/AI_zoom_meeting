@@ -243,6 +243,54 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
                   docId
                 }));
               }
+            },
+            sendTabSwitchEventFn: (event: 'away' | 'returned', duration?: number, category?: string) => {
+              const myId = useMeetingStore.getState().mySignalingId || 'local-user';
+              const payload = {
+                type: 'tab-switch-event',
+                studentName: userName,
+                studentId: myId,
+                event,
+                duration: duration || 0,
+                category: category || 'social_or_external_tab',
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+              };
+
+              if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(payload));
+              }
+
+              if (typeof BroadcastChannel !== 'undefined') {
+                try {
+                  const channel = new BroadcastChannel(`smartmeet_focus_${signalingRoom}`);
+                  channel.postMessage(payload);
+                  channel.close();
+                } catch {
+                  // ignore
+                }
+              }
+            },
+            sendFocusNudgeFn: (targetStudentId: string, message: string) => {
+              const payload = {
+                type: 'focus-nudge',
+                targetStudentId,
+                message,
+                teacherName: userName
+              };
+
+              if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(payload));
+              }
+
+              if (typeof BroadcastChannel !== 'undefined') {
+                try {
+                  const channel = new BroadcastChannel(`smartmeet_focus_${signalingRoom}`);
+                  channel.postMessage(payload);
+                  channel.close();
+                } catch {
+                  // ignore
+                }
+              }
             }
           });
           
@@ -415,6 +463,35 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
               const isFollowing = useMeetingStore.getState().isFollowingTeacher;
               if (isFollowing && typeof page === 'number') {
                 useMeetingStore.getState().setDocumentCurrentPage(page, false);
+              }
+              break;
+            }
+
+            case 'tab-switch-event': {
+              const { studentName, studentId, event: status, duration, category, timestamp } = data;
+              const myId = useMeetingStore.getState().mySignalingId;
+              if (studentId !== myId) {
+                useMeetingStore.getState().recordRemoteTabSwitch({
+                  id: `focus-${Date.now()}-${Math.random()}`,
+                  studentId: studentId || studentName,
+                  studentName,
+                  status,
+                  durationSeconds: duration,
+                  category: category || 'social_or_external_tab',
+                  violationNumber: (useMeetingStore.getState().studentFocusMap[studentId]?.violationCount || 0) + (status === 'away' ? 1 : 0),
+                  timestamp: timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                });
+              }
+              break;
+            }
+
+            case 'focus-nudge': {
+              const { targetStudentId, message, teacherName } = data;
+              const myId = useMeetingStore.getState().mySignalingId;
+              if (targetStudentId === myId || targetStudentId === 'local-user' || targetStudentId === userName) {
+                useMeetingStore.setState({
+                  teacherNudgeMessage: message || `👨‍🏫 ${teacherName || 'Teacher'} reminded you: Please stay focused on the classroom tab!`
+                });
               }
               break;
             }
@@ -611,17 +688,60 @@ export const useWebRTC = (roomId: string, userName: string, userRole: 'teacher' 
       return pc;
     };
 
+    // Setup cross-tab BroadcastChannel for focus event sync
+    let focusBroadcastChannel: BroadcastChannel | null = null;
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        const rawRoom = (typeof window !== 'undefined' && (window as any).__smartmeet_session_room)
+          ? (window as any).__smartmeet_session_room
+          : roomId;
+        const normRoom = (rawRoom || roomId).trim().toLowerCase();
+        focusBroadcastChannel = new BroadcastChannel(`smartmeet_focus_${normRoom}`);
+        focusBroadcastChannel.onmessage = (event) => {
+          const msg = event.data;
+          if (!msg) return;
+          if (msg.type === 'tab-switch-event' && msg.studentName !== userName) {
+            useMeetingStore.getState().recordRemoteTabSwitch({
+              id: `focus-bc-${Date.now()}-${Math.random()}`,
+              studentId: msg.studentId || msg.studentName,
+              studentName: msg.studentName,
+              status: msg.event,
+              durationSeconds: msg.duration,
+              category: msg.category || 'social_or_external_tab',
+              violationNumber: (useMeetingStore.getState().studentFocusMap[msg.studentId]?.violationCount || 0) + (msg.event === 'away' ? 1 : 0),
+              timestamp: msg.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            });
+          } else if (msg.type === 'focus-nudge') {
+            const myId = useMeetingStore.getState().mySignalingId;
+            if (msg.targetStudentId === myId || msg.targetStudentId === 'local-user' || msg.targetStudentId === userName) {
+              useMeetingStore.setState({
+                teacherNudgeMessage: msg.message || `👨‍🏫 ${msg.teacherName || 'Teacher'} reminded you: Please stay focused on the classroom tab!`
+              });
+            }
+          }
+        };
+      } catch {
+        // ignore
+      }
+    }
+
     initializeMediaAndSignaling();
 
     return () => {
       isMounted = false;
       
+      if (focusBroadcastChannel) {
+        focusBroadcastChannel.close();
+      }
+
       useMeetingStore.setState({ 
         sendChatMessageFn: null, 
         sendAudioChunkFn: null, 
         sendReactionFn: null,
         sendDocumentShareFn: null,
         sendDocumentPageSyncFn: null,
+        sendTabSwitchEventFn: null,
+        sendFocusNudgeFn: null,
         mySignalingId: '' 
       });
       

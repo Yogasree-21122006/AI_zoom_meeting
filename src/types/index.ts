@@ -123,3 +123,25 @@ export interface MeetingHealthMetrics {
   participationScore: number;
   status: 'excellent' | 'good' | 'fair' | 'poor';
 }
+
+export interface FocusIncident {
+  id: string;
+  studentId: string;
+  studentName: string;
+  timestamp: string;
+  durationSeconds?: number;
+  violationNumber: number;
+  status: 'away' | 'returned';
+  category: 'social_or_external_tab' | 'game_or_multimedia' | 'minimized_window';
+}
+
+export interface StudentFocusStatus {
+  studentId: string;
+  studentName: string;
+  isFocused: boolean;
+  currentAwaySeconds: number;
+  totalAwaySeconds: number;
+  violationCount: number;
+  lastAwayTimestamp?: string;
+}
+

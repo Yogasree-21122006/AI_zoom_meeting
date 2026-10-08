@@ -13,7 +13,9 @@ import type {
   SpeakerStat,
   StudyNotesData,
   SmartRejoinInfo,
-  MeetingHealthMetrics
+  MeetingHealthMetrics,
+  FocusIncident,
+  StudentFocusStatus
 } from '../types';
 import { saveTranscriptToSupabase, fetchTranscriptsFromSupabase, saveDocumentToSupabase } from '../lib/supabase';
 import {
@@ -194,6 +196,22 @@ interface MeetingState {
   setPresentationViewMode: (mode: 'split' | 'fullscreen' | 'pip') => void;
   toggleFollowTeacher: () => void;
   loadSupabaseHistory: () => Promise<void>;
+
+  // 🛡️ Focus & Anti-Distraction Proctoring States
+  isFocusMonitorOpen: boolean;
+  focusIncidents: FocusIncident[];
+  studentFocusMap: Record<string, StudentFocusStatus>;
+  studentReturnedNotice: { duration: number; violationCount: number } | null;
+  teacherNudgeMessage: string | null;
+  sendTabSwitchEventFn: ((event: 'away' | 'returned', duration?: number, category?: string) => void) | null;
+  sendFocusNudgeFn: ((targetStudentId: string, message: string) => void) | null;
+
+  // Focus Actions
+  toggleFocusMonitor: (open?: boolean) => void;
+  recordRemoteTabSwitch: (incident: FocusIncident) => void;
+  clearStudentReturnedNotice: () => void;
+  clearTeacherNudgeMessage: () => void;
+  sendTeacherNudge: (studentId: string, studentName: string, message?: string) => void;
 }
 
 export const useMeetingStore = create<MeetingState>((set, get) => ({
@@ -230,6 +248,15 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
   isPresentationViewerOpen: false,
   presentationViewMode: 'split',
   isFollowingTeacher: true,
+
+  // 🛡️ Focus & Anti-Distraction Proctoring States
+  isFocusMonitorOpen: false,
+  focusIncidents: [],
+  studentFocusMap: {},
+  studentReturnedNotice: null,
+  teacherNudgeMessage: null,
+  sendTabSwitchEventFn: null,
+  sendFocusNudgeFn: null,
   startRecordingFn: null,
   stopRecordingFn: null,
   sendChatMessageFn: null,
@@ -1226,5 +1253,72 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
   },
 
   setPresentationViewMode: (mode) => set({ presentationViewMode: mode }),
-  toggleFollowTeacher: () => set((state) => ({ isFollowingTeacher: !state.isFollowingTeacher }))
+  toggleFollowTeacher: () => set((state) => ({ isFollowingTeacher: !state.isFollowingTeacher })),
+
+  // 🛡️ Focus & Anti-Distraction Proctoring Actions
+  toggleFocusMonitor: (open) => {
+    set((state) => ({
+      isFocusMonitorOpen: open !== undefined ? open : !state.isFocusMonitorOpen
+    }));
+  },
+
+  recordRemoteTabSwitch: (incident) => {
+    const { studentId, studentName, status, durationSeconds } = incident;
+    set((state) => {
+      const existingStatus = state.studentFocusMap[studentId] || {
+        studentId,
+        studentName,
+        isFocused: true,
+        currentAwaySeconds: 0,
+        totalAwaySeconds: 0,
+        violationCount: 0
+      };
+
+      const isAway = status === 'away';
+      const updatedStatus: StudentFocusStatus = {
+        ...existingStatus,
+        studentName,
+        isFocused: !isAway,
+        violationCount: isAway ? existingStatus.violationCount + 1 : existingStatus.violationCount,
+        totalAwaySeconds: durationSeconds ? existingStatus.totalAwaySeconds + durationSeconds : existingStatus.totalAwaySeconds,
+        lastAwayTimestamp: incident.timestamp
+      };
+
+      return {
+        focusIncidents: [incident, ...state.focusIncidents].slice(0, 60),
+        studentFocusMap: {
+          ...state.studentFocusMap,
+          [studentId]: updatedStatus
+        }
+      };
+    });
+
+    // If I am a teacher, show a high-visibility Toast alert!
+    const myRole = get().userRole;
+    if (myRole === 'teacher') {
+      if (incident.status === 'away') {
+        get().addToast(
+          `🚨 Focus Alert: ${incident.studentName} switched away from the class tab!`,
+          'warning'
+        );
+      } else if (incident.status === 'returned' && incident.durationSeconds) {
+        get().addToast(
+          `↩️ ${incident.studentName} returned to class after ${incident.durationSeconds}s (Violation #${incident.violationNumber})`,
+          'info'
+        );
+      }
+    }
+  },
+
+  clearStudentReturnedNotice: () => set({ studentReturnedNotice: null }),
+  clearTeacherNudgeMessage: () => set({ teacherNudgeMessage: null }),
+
+  sendTeacherNudge: (studentId, studentName, message) => {
+    const nudgeMsg = message || 'Teacher Notice: Please stay focused on the classroom tab!';
+    const fn = get().sendFocusNudgeFn;
+    if (fn) {
+      fn(studentId, nudgeMsg);
+    }
+    get().addToast(`Sent focus reminder to ${studentName}`, 'info');
+  }
 }));

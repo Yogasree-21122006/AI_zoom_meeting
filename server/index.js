@@ -726,6 +726,30 @@ wss.on('connection', (ws) => {
           break;
         }
 
+        case 'tab-switch-event': {
+          console.log(`[Focus Monitor] Tab switch event in room ${ws.roomId} from ${data.studentName}: ${data.event}`);
+          const room = rooms.get(ws.roomId);
+          if (room) {
+            room.forEach((peerSocket) => {
+              if (peerSocket.id !== ws.id) {
+                peerSocket.send(JSON.stringify(data));
+              }
+            });
+          }
+          break;
+        }
+
+        case 'focus-nudge': {
+          console.log(`[Focus Monitor] Focus nudge in room ${ws.roomId} to ${data.targetStudentId}`);
+          const room = rooms.get(ws.roomId);
+          if (room) {
+            room.forEach((peerSocket) => {
+              peerSocket.send(JSON.stringify(data));
+            });
+          }
+          break;
+        }
+
         case 'audio-chunk': {
           const { audio, mimeType, language } = data;
 
